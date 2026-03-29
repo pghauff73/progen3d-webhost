@@ -1,0 +1,199 @@
+<grammar> ::= <rule-list>
+
+<rule-list> ::= <rule>
+<rule-list> ::= <rule> <rule-list>
+
+<rule> ::= <identifier> <rule-params-opt> <rule-repeat-opt> <rule-probability-opt> "->" <rule-stages>
+
+<rule-params-opt> ::= ""
+<rule-params-opt> ::= "(" <identifier-list-opt> ")"
+
+<rule-repeat-opt> ::= ""
+<rule-repeat-opt> ::= <expression>
+
+<rule-probability-opt> ::= ""
+<rule-probability-opt> ::= ";" <expression>
+
+<rule-stages> ::= <sequence>
+<rule-stages> ::= <sequence> "|" <sequence>
+<rule-stages> ::= <sequence> "|" <sequence> "|" <sequence>
+
+<sequence> ::= ""
+<sequence> ::= <statement> <sequence>
+
+<statement> ::= <group>
+<statement> ::= <conditional>
+<statement> ::= <random-variable>
+<statement> ::= <transform>
+<statement> ::= <instance>
+<statement> ::= <rule-call>
+
+<group> ::= "[" <sequence> "]"
+
+<conditional> ::= "?" "(" <expression> ")" <rule-call> <conditional-alt-opt>
+
+<conditional-alt-opt> ::= ""
+<conditional-alt-opt> ::= ":" <rule-call>
+
+<random-variable> ::= "R" <integer-flag-opt> <identifier> <random-range-opt>
+
+<integer-flag-opt> ::= ""
+<integer-flag-opt> ::= "*"
+
+<random-range-opt> ::= ""
+<random-range-opt> ::= "(" <expression> <expression> ")"
+
+<transform> ::= <binary-transform> "(" <expression> <expression> ")"
+<transform> ::= <ternary-transform> "(" <expression> <expression> <expression> ")"
+
+<binary-transform> ::= "A"
+<binary-transform> ::= "R"
+
+<ternary-transform> ::= "T"
+<ternary-transform> ::= "S"
+<ternary-transform> ::= "DSX"
+<ternary-transform> ::= "DSY"
+<ternary-transform> ::= "DSZ"
+<ternary-transform> ::= "DTX"
+<ternary-transform> ::= "DTY"
+<ternary-transform> ::= "DTZ"
+
+<instance> ::= "I" "(" <identifier> <identifier> <expression> ")"
+
+<rule-call> ::= <identifier> <call-args-opt>
+
+<call-args-opt> ::= ""
+<call-args-opt> ::= "(" <expression-list-opt> ")"
+
+<identifier-list-opt> ::= ""
+<identifier-list-opt> ::= <identifier-list>
+
+<identifier-list> ::= <identifier>
+<identifier-list> ::= <identifier> <identifier-list-tail>
+
+<identifier-list-tail> ::= <identifier-separator> <identifier>
+<identifier-list-tail> ::= <identifier-separator> <identifier> <identifier-list-tail>
+
+<identifier-separator> ::= ","
+<identifier-separator> ::= ""
+
+<expression-list-opt> ::= ""
+<expression-list-opt> ::= <expression-list>
+
+<expression-list> ::= <expression>
+<expression-list> ::= <expression> <expression-list-tail>
+
+<expression-list-tail> ::= <expression-separator> <expression>
+<expression-list-tail> ::= <expression-separator> <expression> <expression-list-tail>
+
+<expression-separator> ::= ","
+<expression-separator> ::= ""
+
+<expression> ::= <comparison>
+
+<comparison> ::= <additive>
+<comparison> ::= <additive> <comparison-op> <additive>
+<comparison> ::= <additive> <comparison-op> <additive> <comparison-tail>
+
+<comparison-tail> ::= <comparison-op> <additive>
+<comparison-tail> ::= <comparison-op> <additive> <comparison-tail>
+
+<comparison-op> ::= "<"
+<comparison-op> ::= ">"
+<comparison-op> ::= "<="
+<comparison-op> ::= ">="
+<comparison-op> ::= "=="
+<comparison-op> ::= "!="
+
+<additive> ::= <multiplicative>
+<additive> ::= <multiplicative> "+" <multiplicative>
+<additive> ::= <multiplicative> "-" <multiplicative>
+<additive> ::= <multiplicative> "+" <multiplicative> <additive-tail>
+<additive> ::= <multiplicative> "-" <multiplicative> <additive-tail>
+
+<additive-tail> ::= "+" <multiplicative>
+<additive-tail> ::= "-" <multiplicative>
+<additive-tail> ::= "+" <multiplicative> <additive-tail>
+<additive-tail> ::= "-" <multiplicative> <additive-tail>
+
+<multiplicative> ::= <power>
+<multiplicative> ::= <power> "*" <power>
+<multiplicative> ::= <power> "/" <power>
+<multiplicative> ::= <power> "*" <power> <multiplicative-tail>
+<multiplicative> ::= <power> "/" <power> <multiplicative-tail>
+
+<multiplicative-tail> ::= "*" <power>
+<multiplicative-tail> ::= "/" <power>
+<multiplicative-tail> ::= "*" <power> <multiplicative-tail>
+<multiplicative-tail> ::= "/" <power> <multiplicative-tail>
+
+<power> ::= <unary>
+<power> ::= <unary> "^" <power>
+
+<unary> ::= <primary>
+<unary> ::= "-" <unary>
+
+<primary> ::= <number>
+<primary> ::= <variable>
+<primary> ::= <function-call>
+<primary> ::= <call-expression>
+<primary> ::= "(" <expression> ")"
+
+<variable> ::= <identifier>
+
+<function-call> ::= <builtin-function> "(" <expression-list-opt> ")"
+
+<builtin-function> ::= "sin"
+<builtin-function> ::= "cos"
+<builtin-function> ::= "tan"
+<builtin-function> ::= "abs"
+<builtin-function> ::= "sqrt"
+<builtin-function> ::= "floor"
+<builtin-function> ::= "ceil"
+<builtin-function> ::= "min"
+<builtin-function> ::= "max"
+<builtin-function> ::= "float"
+<builtin-function> ::= "int"
+<builtin-function> ::= "rand"
+
+<call-expression> ::= <identifier> "(" <expression-list-opt> ")"
+
+<identifier> ::= <letter>
+<identifier> ::= <letter> <identifier-rest>
+
+<identifier-rest> ::= ""
+<identifier-rest> ::= <identifier-char> <identifier-rest>
+
+<identifier-char> ::= <letter>
+<identifier-char> ::= <digit>
+<identifier-char> ::= "_"
+
+<number> ::= <integer>
+<number> ::= <integer> "." <digits-opt>
+<number> ::= "." <digits>
+
+<integer> ::= <digit>
+<integer> ::= <digit> <digits-opt>
+
+<digits-opt> ::= ""
+<digits-opt> ::= <digits>
+
+<digits> ::= <digit>
+<digits> ::= <digit> <digits>
+
+<letter> ::= "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M"
+<letter> ::= "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z"
+<letter> ::= "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m"
+<letter> ::= "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z"
+<letter> ::= "_"
+
+<digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+
+Notes:
+- Whitespace, newlines, line comments ("// ..."), and block comments ("/* ... */") are ignored between tokens.
+- In <identifier-list> and <expression-list>, items may be separated by commas or by whitespace alone.
+- In statement position, a bare <identifier> is parsed as a <rule-call>; in expression position, a bare <identifier> is parsed as a <variable>.
+- Rule stages map to parser behavior as follows:
+  * one sequence: main
+  * two sequences: pre | main
+  * three sequences: pre | main | post

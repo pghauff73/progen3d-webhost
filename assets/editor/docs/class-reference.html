@@ -1,0 +1,433 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Grammar Reader WebGLr2 – Class Reference</title>
+  <link rel="stylesheet" href="../css/docs.css">
+</head>
+<body>
+    <!-- Page 1: Title and Overview -->
+    <div class="page">
+        <h1>Grammar Reader WebGLr2<br>Complete Class and Function Reference</h1>
+        
+        <h2>Summary Statistics</h2>
+        <ul>
+            <li><strong>Total Classes:</strong> 28</li>
+            <li><strong>Total Methods:</strong> 222</li>
+            <li><strong>Total Standalone Functions:</strong> 37</li>
+            <li><strong>Total Constants:</strong> 19+</li>
+        </ul>
+
+        <h2>Current Grammar Surface</h2>
+        <p>The editor now treats the BNF rule form as canonical: <code>&lt;rule&gt; ::= &lt;rule_header&gt; "->" &lt;rule_body&gt;</code>. Parameters, calls, conditionals, transforms, axis deformation operators, instances, and <code>sin</code>/<code>cos</code> expressions follow that surface throughout the site.</p>
+        
+        <h2>Architecture Overview</h2>
+        <p>The application follows a modular architecture:</p>
+        <ol>
+            <li><strong>Lexing &amp; Parsing Layer:</strong> <code>GrammarLexer</code>, <code>Grammar</code>, <code>MathParser</code>, <code>MathTokenizer</code></li>
+            <li><strong>Analysis Layer:</strong> <code>AnalysisEngine</code>, <code>Token</code>, <code>Rule</code>, <code>Variable</code></li>
+            <li><strong>Execution Layer:</strong> <code>Context</code>, <code>Scope</code>, <code>Scene</code>, <code>Solution</code></li>
+            <li><strong>Rendering Layer:</strong> <code>WebGLSceneRenderer</code>, <code>RendererManager</code></li>
+            <li><strong>UI Layer:</strong> <code>EditorApplication</code>, <code>ConsoleManager</code>, <code>TutorialManager</code></li>
+            <li><strong>Math Layer:</strong> <code>Mat4</code>, <code>Vec3</code>, <code>Axis</code>, <code>MathExpressionEvaluator</code></li>
+            <li><strong>Error Handling:</strong> <code>ParseError</code>, <code>RuntimeGrammarError</code>, <code>SolutionError</code></li>
+        </ol>
+        
+        <h2>Key Constants</h2>
+        <ul>
+            <li><code>TEXTURE_PRESETS</code> - Texture preset definitions</li>
+            <li><code>STRUCTURE_PRESETS</code> - Structure presets</li>
+            <li><code>GRAMMAR_TOOLTIPS</code> - Grammar tooltips</li>
+            <li><code>TRI_IDX</code> - Triangle indices</li>
+            <li><code>EDGE_IDX</code> - Edge indices</li>
+            <li><code>CUBE_TRI_UVS</code> - Cube triangle UVs</li>
+            <li><code>FS_LIT</code> - Fragment shader (lit)</li>
+            <li><code>VS_LIT</code> - Vertex shader (lit)</li>
+        </ul>
+        
+        <div class="footer">Page 1 of 5</div>
+    </div>
+
+    <!-- Page 2: Core Classes -->
+    <div class="page">
+        <h1>Core Classes</h1>
+        
+        <div class="class-box">
+            <h3>WebGLSceneRenderer</h3>
+            <div class="class-purpose"><strong>Purpose:</strong> WebGL rendering engine</div>
+            <div class="methods">
+                <strong>Key Methods:</strong>
+                <ul>
+                    <li><code>constructor(canvasOrSelector, opts={})</code> - Initializes renderer</li>
+                    <li><code>setScene(scene)</code> - Sets scene to render</li>
+                    <li><code>invalidate()</code> - Invalidates render</li>
+                    <li><code>render()</code> - Renders scene</li>
+                    <li><code>resize()</code> - Resizes canvas</li>
+                    <li><code>createAllPresetTextures()</code> - Creates textures</li>
+                    <li><code>getTexture(name)</code> - Gets texture</li>
+                    <li><code>setWireframe(on=true)</code> - Sets wireframe mode</li>
+                    <li><code>setLineColor(r=0, g=0, b=0, a=0.3)</code> - Sets line color</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="class-box">
+            <h3>Scene</h3>
+            <div class="class-purpose"><strong>Purpose:</strong> Manages 3D scene objects</div>
+            <div class="methods">
+                <strong>Key Methods:</strong>
+                <ul>
+                    <li><code>constructor()</code> - Initializes scene</li>
+                    <li><code>add(type, transform1, transform2, transform3, texIndex, arg, val, axisName = "z")</code> - Adds object</li>
+                    <li><code>clear()</code> - Clears scene</li>
+                    <li><code>getAll()</code> - Gets all objects</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="class-box">
+            <h3>Grammar</h3>
+            <div class="class-purpose"><strong>Purpose:</strong> Parses and processes grammar definitions</div>
+            <div class="methods">
+                <strong>Key Methods:</strong>
+                <ul>
+                    <li><code>constructor(fileText)</code> - Parses grammar from text</li>
+                    <li><code>MathS(input)</code> - Processes math expressions</li>
+                    <li><code>ReadTokens(rule, rule_str, sec)</code> - Reads tokens from rule</li>
+                    <li><code>Recurse(rule)</code> - Recursively processes rule</li>
+                    <li><code>findRule(name)</code> - Finds rule by name</li>
+                    <li><code>expectOp(S, op, ctx = "syntax")</code> - Expects operator</li>
+                    <li><code>isNumStr(s)</code> - Checks if string is number</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="class-box">
+            <h3>GrammarLexer</h3>
+            <div class="class-purpose"><strong>Purpose:</strong> Lexical analysis of grammar text</div>
+            <div class="methods">
+                <strong>Key Methods:</strong>
+                <ul>
+                    <li><code>constructor(text)</code> - Initializes lexer</li>
+                    <li><code>_lex()</code> - Performs lexical analysis</li>
+                    <li><code>_matchArrow(i)</code> - Matches arrow operator</li>
+                    <li><code>_matchMath(start)</code> - Matches math expression</li>
+                    <li><code>_readIdentifier(s, i, end)</code> - Reads identifier</li>
+                    <li><code>_readNumber(s, i, end)</code> - Reads number</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="class-box">
+            <h3>AnalysisEngine</h3>
+            <div class="class-purpose"><strong>Purpose:</strong> Analyzes grammar text, tokenizes, and provides diagnostics</div>
+            <div class="methods">
+                <strong>Key Methods:</strong>
+                <ul>
+                    <li><code>analyze(text, caretPos = 0)</code> - Analyzes grammar text at caret position</li>
+                    <li><code>tokenize(text)</code> - Tokenizes grammar text</li>
+                    <li><code>runDiagnostics(text, tokens)</code> - Runs diagnostics on grammar</li>
+                    <li><code>collectSymbols(text)</code> - Collects symbols from grammar text</li>
+                    <li><code>buildRuleIndex(text, tokens, ruleNames)</code> - Builds index of grammar rules</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="footer">Page 2 of 5</div>
+    </div>
+
+    <!-- Page 3: Math & Transformation Classes -->
+    <div class="page">
+        <h1>Math &amp; Transformation Classes</h1>
+        
+        <div class="class-box">
+            <h3>Mat4</h3>
+            <div class="class-purpose"><strong>Purpose:</strong> 4x4 transformation matrix operations</div>
+            <div class="methods">
+                <strong>Key Methods:</strong>
+                <ul>
+                    <li><code>constructor(elements = null)</code> - Creates matrix</li>
+                    <li><code>identity()</code> - Sets to identity</li>
+                    <li><code>translate(x, y, z)</code> - Translates matrix</li>
+                    <li><code>scale(x, y, z)</code> - Scales matrix</li>
+                    <li><code>rotateX(angle)</code> - Rotates around X</li>
+                    <li><code>rotateY(angle)</code> - Rotates around Y</li>
+                    <li><code>rotateZ(angle)</code> - Rotates around Z</li>
+                    <li><code>multiply(other)</code> - Multiplies matrices</li>
+                    <li><code>invert()</code> - Inverts matrix</li>
+                    <li><code>transformPoint(point)</code> - Transforms point</li>
+                    <li><code>transformDirection(direction)</code> - Transforms direction</li>
+                    <li><code>getNormalMatrix()</code> - Gets normal matrix</li>
+                    <li><code>toFloat32Array()</code> - Converts to Float32</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="class-box">
+            <h3>Vec3</h3>
+            <div class="class-purpose"><strong>Purpose:</strong> 3D vector operations</div>
+            <div class="methods">
+                <strong>Key Methods:</strong>
+                <ul>
+                    <li><code>constructor(x = 0, y = 0, z = 0)</code> - Creates vector</li>
+                    <li><code>add(other)</code> - Adds vectors</li>
+                    <li><code>sub(other)</code> - Subtracts</li>
+                    <li><code>mul(other)</code> - Multiplies</li>
+                    <li><code>div(other)</code> - Divides</li>
+                    <li><code>dot(other)</code> - Dot product</li>
+                    <li><code>cross(other)</code> - Cross product</li>
+                    <li><code>magnitude()</code> - Gets magnitude</li>
+                    <li><code>normalize()</code> - Normalizes</li>
+                    <li><code>scale(x = 1, y = 1, z = 1)</code> - Scales</li>
+                    <li><code>distanceTo(other)</code> - Distance to</li>
+                    <li><code>lerp(other, t)</code> - Linear interpolation</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="class-box">
+            <h3>Axis</h3>
+            <div class="class-purpose"><strong>Purpose:</strong> Represents a 3D axis with transformations</div>
+            <div class="methods">
+                <strong>Key Methods:</strong>
+                <ul>
+                    <li><code>constructor(kind = "z")</code> - Creates axis (x, y, or z)</li>
+                    <li><code>applyTransform(M)</code> - Applies transformation matrix</li>
+                    <li><code>toFlat32()</code> - Converts to Float32Array</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="class-box">
+            <h3>Scope</h3>
+            <div class="class-purpose"><strong>Purpose:</strong> Manages transformation scope</div>
+            <div class="methods">
+                <strong>Key Methods:</strong>
+                <ul>
+                    <li><code>constructor(other = null)</code> - Creates scope</li>
+                    <li><code>T(v)</code> - Translate</li>
+                    <li><code>S(v)</code> - Scale</li>
+                    <li><code>Rx(angleDeg)</code> - Rotate X</li>
+                    <li><code>Ry(angleDeg)</code> - Rotate Y</li>
+                    <li><code>Rz(angleDeg)</code> - Rotate Z</li>
+                    <li><code>DS(v)</code> - Dynamic scale</li>
+                    <li><code>DT(v)</code> - Dynamic translate</li>
+                    <li><code>apply(M)</code> - Applies matrix</li>
+                    <li><code>getPrimaryMatrix()</code> - Gets primary transform matrix</li>
+                    <li><code>getSecondaryScaleMatrix()</code> - Gets secondary scale matrix</li>
+                    <li><code>getSecondaryTranslateMatrix()</code> - Gets secondary translate matrix</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="class-box">
+            <h3>MathExpressionEvaluator</h3>
+            <div class="class-purpose"><strong>Purpose:</strong> Evaluates mathematical expressions</div>
+            <div class="methods">
+                <strong>Key Methods:</strong>
+                <ul>
+                    <li><code>constructor(variables={}, functions={})</code> - Initializes evaluator</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="footer">Page 3 of 5</div>
+    </div>
+
+    <!-- Page 4: Execution & UI Classes -->
+    <div class="page">
+        <h1>Execution &amp; UI Classes</h1>
+        
+        <div class="class-box">
+            <h3>Context</h3>
+            <div class="class-purpose"><strong>Purpose:</strong> Manages execution context and scope stack</div>
+            <div class="methods">
+                <strong>Key Methods:</strong>
+                <ul>
+                    <li><code>constructor()</code> - Initializes context</li>
+                    <li><code>current()</code> - Gets current context</li>
+                    <li><code>push()</code> - Pushes context</li>
+                    <li><code>pop()</code> - Pops context</li>
+                    <li><code>pushScope()</code> - Pushes new scope</li>
+                    <li><code>popScope()</code> - Pops scope</li>
+                    <li><code>getCurrentScope()</code> - Gets current scope</li>
+                    <li><code>newScope()</code> - Creates new scope</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="class-box">
+            <h3>Token</h3>
+            <div class="class-purpose"><strong>Purpose:</strong> Represents a grammar token</div>
+            <div class="methods">
+                <strong>Key Methods:</strong>
+                <ul>
+                    <li><code>constructor(name, instCount=0)</code> - Creates token</li>
+                    <li><code>addArgument(v)</code> - Adds argument</li>
+                    <li><code>addInstanceType(s)</code> - Adds instance type</li>
+                    <li><code>setVarName(s)</code> - Sets variable name</li>
+                    <li><code>isRule()</code> - Checks if rule</li>
+                    <li><code>performAction(context, scene, deps = {})</code> - Performs action</li>
+                    <li><code>print()</code> - Prints token</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="class-box">
+            <h3>Rule</h3>
+            <div class="class-purpose"><strong>Purpose:</strong> Represents a grammar rule</div>
+            <div class="methods">
+                <strong>Key Methods:</strong>
+                <ul>
+                    <li><code>constructor(name, repeat)</code> - Creates rule</li>
+                    <li><code>addToken(tok, sec)</code> - Adds token to rule</li>
+                    <li><code>print()</code> - Prints rule</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="class-box">
+            <h3>Variable</h3>
+            <div class="class-purpose"><strong>Purpose:</strong> Represents a grammar variable</div>
+            <div class="methods">
+                <strong>Key Methods:</strong>
+                <ul>
+                    <li><code>constructor(name, min, max, i)</code> - Creates variable</li>
+                    <li><code>getRandom()</code> - Gets random value</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="class-box">
+            <h3>EditorApplication</h3>
+            <div class="class-purpose"><strong>Purpose:</strong> Main editor application controller</div>
+            <div class="methods">
+                <strong>Key Methods:</strong>
+                <ul>
+                    <li><code>constructor()</code> - Initializes application</li>
+                    <li><code>initialize()</code> - Initializes application</li>
+                    <li><code>initializeUI()</code> - Initializes UI</li>
+                    <li><code>runGrammar()</code> - Runs grammar</li>
+                    <li><code>render()</code> - Renders editor</li>
+                    <li><code>setupEventListeners()</code> - Sets up listeners</li>
+                    <li><code>toggleOrbit()</code> - Toggles orbit</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="class-box">
+            <h3>ConsoleManager</h3>
+            <div class="class-purpose"><strong>Purpose:</strong> Manages console output and logging</div>
+            <div class="methods">
+                <strong>Key Methods:</strong>
+                <ul>
+                    <li><code>constructor(outputElement)</code> - Initializes console manager</li>
+                    <li><code>info(t)</code> - Logs info message</li>
+                    <li><code>warn(t)</code> - Logs warning message</li>
+                    <li><code>error(t)</code> - Logs error message</li>
+                    <li><code>renderLine(type, text)</code> - Renders console line</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="footer">Page 4 of 5</div>
+    </div>
+
+    <!-- Page 5: Standalone Functions & Error Handling -->
+    <div class="page">
+        <h1>Standalone Functions &amp; Error Handling</h1>
+        
+        <h2>Key Standalone Functions</h2>
+        <ul>
+            <li><code>prepare(tokens, scene)</code> - Prepares tokens for execution</li>
+            <li><code>transformGrammar(program)</code> - Transforms grammar</li>
+            <li><code>makeStructure(type, axis, name, vars)</code> - Makes structure</li>
+            <li><code>replacevars(s)</code> - Replaces variables in string</li>
+            <li><code>MathS2_js(input)</code> - Evaluates math expressions</li>
+            <li><code>collectRuleBlocks(src)</code> - Collects rule blocks</li>
+            <li><code>splitBlock(block)</code> - Splits block into parts</li>
+            <li><code>program(gl, vs, fs)</code> - Creates shader program</li>
+            <li><code>compile(gl, type, src)</code> - Compiles shader</li>
+            <li><code>transformPoint(M, v, w)</code> - Transforms point</li>
+            <li><code>makeRng(seed)</code> - Creates RNG</li>
+            <li><code>pickWeighted(entries, rnd)</code> - Weighted random pick</li>
+            <li><code>buildProgram({preset, count, axisBias, scale, center, baseVars})</code> - Builds program</li>
+        </ul>
+        
+        <h2>Error Handling Classes</h2>
+        
+        <div class="class-box">
+            <h3>ParseError (extends Error)</h3>
+            <div class="class-purpose"><strong>Purpose:</strong> Custom error for parsing failures</div>
+            <div class="methods">
+                <strong>Key Methods:</strong>
+                <ul>
+                    <li><code>constructor(message, line = 0, col = 0, snippet = "")</code> - Creates parse error</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="class-box">
+            <h3>RuntimeGrammarError (extends Error)</h3>
+            <div class="class-purpose"><strong>Purpose:</strong> Runtime grammar execution errors</div>
+            <div class="methods">
+                <strong>Key Methods:</strong>
+                <ul>
+                    <li><code>constructor(message)</code> - Creates runtime error</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="class-box">
+            <h3>SolutionError (extends Error)</h3>
+            <div class="class-purpose"><strong>Purpose:</strong> Solution processing errors</div>
+            <div class="methods">
+                <strong>Key Methods:</strong>
+                <ul>
+                    <li><code>constructor(message, idx = -1, expr = "")</code> - Creates solution error</li>
+                </ul>
+            </div>
+        </div>
+        
+        <h2>Additional Classes</h2>
+        
+        <div class="class-box">
+            <h3>RendererManager</h3>
+            <div class="class-purpose"><strong>Purpose:</strong> Manages WebGL rendering</div>
+            <div class="methods">
+                <strong>Key Methods:</strong>
+                <ul>
+                    <li><code>constructor(consoleManager)</code> - Initializes renderer</li>
+                    <li><code>initialize()</code> - Initializes renderer</li>
+                    <li><code>runGrammarPipeline(text, statusCallback)</code> - Runs grammar pipeline</li>
+                    <li><code>toggleOrbit()</code> - Toggles orbit mode</li>
+                    <li><code>clear()</code> - Clears scene</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="class-box">
+            <h3>TutorialManager</h3>
+            <div class="class-purpose"><strong>Purpose:</strong> Manages tutorial system</div>
+            <div class="methods">
+                <strong>Key Methods:</strong>
+                <ul>
+                    <li><code>constructor(consoleManager)</code> - Initializes tutorial</li>
+                    <li><code>initialize(sourceElement)</code> - Initializes tutorial</li>
+                    <li><code>createDemoGrammar()</code> - Creates demo</li>
+                    <li><code>createTutorialButton()</code> - Creates button</li>
+                    <li><code>updateHeader(stepIndex, total, title, completed = false)</code> - Updates header</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>Page 5 of 5</p>
+            <p>Generated from Grammar Reader WebGLr2 - Progen3d Visual Design</p>
+        </div>
+    </div>
+
+</body>
+</html>

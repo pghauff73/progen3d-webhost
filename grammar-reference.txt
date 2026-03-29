@@ -1,0 +1,291 @@
+ProGen3D Transform And Deformation Reference
+===========================================
+
+This file describes how the active runtime in `assets/editor/js/core/grammar.js`
+and `assets/editor/js/core/scene.js` applies mathematical transforms and
+axis-partitioned deformation operators to `Cube`, `CubeX`, `CubeY`, and `CubeZ`.
+
+
+1. Primitive coordinate spaces
+------------------------------
+
+All primitives start from cube-like geometry before the main transform matrix is
+applied.
+
+`Cube`
+- Local extents: x in [-0.5, 0.5], y in [-0.5, 0.5], z in [-0.5, 0.5]
+- Centered on the origin
+- Natural axis indicator: z
+
+`CubeX`
+- Local extents: x in [0.0, 1.0], y in [-0.5, 0.5], z in [-0.5, 0.5]
+- Anchored at x = 0 and extends forward to x = 1
+- Natural axis indicator: x
+
+`CubeY`
+- Local extents: x in [-0.5, 0.5], y in [0.0, 1.0], z in [-0.5, 0.5]
+- Anchored at y = 0 and extends forward to y = 1
+- Natural axis indicator: y
+
+`CubeZ`
+- Local extents: x in [-0.5, 0.5], y in [-0.5, 0.5], z in [0.0, 1.0]
+- Anchored at z = 0 and extends forward to z = 1
+- Natural axis indicator: z
+
+The anchored face matters because the deformation operators act on the "negative"
+side of each axis partition. For the centered `Cube`, that is the negative half
+space. For `CubeX`, `CubeY`, and `CubeZ`, the anchored base face counts as the
+negative side for their forward axis.
+
+
+2. Primary transforms
+---------------------
+
+The grammar-level transform operators are:
+
+- `T ( x y z )`
+  Adds translation by `(x, y, z)`.
+
+- `S ( sx sy sz )`
+  Adds non-uniform scale by `(sx, sy, sz)`.
+
+- `A ( angle axis )`
+- `R ( angle axis )`
+  Rotates by `angle` degrees around one axis.
+  Axis mapping is:
+  - `0` = X
+  - `1` = Y
+  - `2` = Z
+
+`A` and `R` are implemented the same way in the active runtime.
+
+These operators accumulate into the state matrix `M` by post-multiplication:
+
+`M := M * Op`
+
+where `Op` is the matrix for the current statement.
+
+Practical consequence:
+- Operators are written in source order.
+- The final vertex transform is `M * p`, so the rightmost matrix acts first on
+  raw local vertices.
+- Example: `T ( 0 1 0 ) S ( 2 2 2 ) I ( Cube ... )` produces a cube scaled by 2
+  and located at y = 1, not y = 2.
+
+When the runtime rebuilds a matrix from the decomposed channels, it uses:
+
+`M = Translation(T) * RotZ(Az) * RotY(Ay) * RotX(Ax) * Scale(S)`
+
+That matches the runtime smoke test which verifies that later scale does not
+scale earlier translation.
+
+
+3. Deformation operators
+------------------------
+
+The deformation operators do not modify the primary matrix `M`.
+Instead, they reshape subsets of the primitive's local vertices before the
+primary matrix is applied.
+
+Supported operators:
+
+- `DSX ( sx sy sz )`
+- `DSY ( sx sy sz )`
+- `DSZ ( sx sy sz )`
+- `DTX ( tx ty tz )`
+- `DTY ( tx ty tz )`
+- `DTZ ( tx ty tz )`
+
+Interpretation:
+
+- `DS*` defines a per-axis affine scale tuple
+- `DT*` defines a per-axis affine translation tuple
+
+For a point `p = (x, y, z)`, the affine action is:
+
+`Affine(scale, translate, p) = scale ⊙ p + translate`
+
+where `⊙` is component-wise multiplication.
+
+More explicitly:
+
+`x' = scale.x * x + translate.x`
+`y' = scale.y * y + translate.y`
+`z' = scale.z * z + translate.z`
+
+
+4. Which vertices each deformation touches
+------------------------------------------
+
+The scene builder tags each vertex by whether it lies on the negative side of
+the X, Y, and Z partitions for the chosen primitive. Deformations are then
+applied in this exact order:
+
+1. X partition: if the vertex is on the negative X side, apply `DSX/DTX`
+2. Y partition: if the vertex is on the negative Y side, apply `DSY/DTY`
+3. Z partition: if the vertex is on the negative Z side, apply `DSZ/DTZ`
+
+If a corner lies in more than one negative partition, it receives multiple
+affine passes in X, then Y, then Z order.
+
+This means the operators are not independent face toggles. Corner vertices can
+be influenced by two or three deformation stages at once.
+
+
+5. Primitive-specific partition rules
+-------------------------------------
+
+`Cube`
+- Negative X partition: vertices with x = -0.5
+- Negative Y partition: vertices with y = -0.5
+- Negative Z partition: vertices with z = -0.5
+- Effect: pulls, tapers, skews, or offsets the "back-left-bottom" half/faces of
+  the centered cube while the positive side stays fixed unless reached through a
+  corner that also belongs to another negative partition
+
+`CubeX`
+- Negative X partition: anchored face at x = 0
+- Negative Y partition: lower half where y = -0.5
+- Negative Z partition: back half where z = -0.5
+- Effect: deforms the anchored root face and the lower/back edges of the beam
+  while the forward tip at x = 1 is preserved unless affected indirectly by
+  primary transforms
+
+`CubeY`
+- Negative X partition: left half where x = -0.5
+- Negative Y partition: anchored base face at y = 0
+- Negative Z partition: back half where z = -0.5
+- Effect: deforms the base/root face and lower-side edges of the upright beam
+
+`CubeZ`
+- Negative X partition: left half where x = -0.5
+- Negative Y partition: lower half where y = -0.5
+- Negative Z partition: anchored base face at z = 0
+- Effect: deforms the base/root face and lower-side edges of the forward beam
+
+
+6. Mental model for each operator
+---------------------------------
+
+`DSX`
+- Rescales the negative-X partition in local coordinates
+- On `Cube`, this affects the left half
+- On `CubeX`, this affects the root face at x = 0
+
+`DTX`
+- Offsets the negative-X partition in local coordinates
+- Often used with `DSX` to shift the anchored/root side after scaling it
+
+`DSY`
+- Rescales the negative-Y partition
+- On `Cube`, this is the lower half
+- On `CubeY`, this is the root face at y = 0
+
+`DTY`
+- Offsets the negative-Y partition
+
+`DSZ`
+- Rescales the negative-Z partition
+- On `Cube`, this is the back half
+- On `CubeZ`, this is the root face at z = 0
+
+`DTZ`
+- Offsets the negative-Z partition
+
+The primary transforms `T`, `S`, `A`, and `R` happen after these local
+deformations. So the recommended way to think about the pipeline is:
+
+1. Start with primitive-local coordinates
+2. Apply local partition deformations to selected vertices
+3. Apply the accumulated primary transform matrix
+4. Emit the final world-space geometry
+
+
+7. Auto-advance behavior of axis primitives
+-------------------------------------------
+
+After emitting an instance, the runtime automatically advances the local
+transform for three primitives:
+
+- `CubeX` advances by local `(1, 0, 0)`
+- `CubeY` advances by local `(0, 1, 0)`
+- `CubeZ` advances by local `(0, 0, 1)`
+
+`Cube` does not auto-advance.
+
+This advance happens by multiplying the current state matrix by a translation
+after the instance is emitted. Because it uses the current matrix, the step is
+in the primitive's current local orientation, not always world axis-aligned.
+
+Example:
+- `A ( 90 1 ) I ( CubeX ... ) I ( CubeX ... )`
+- The second `CubeX` is stepped along rotated local X, which becomes world -Z
+  in the current implementation and smoke test.
+
+
+8. Worked examples
+------------------
+
+Root taper on a forward beam:
+
+`Start -> DSX ( 0.7 1 1 ) DTX ( 0.1 0 0 ) I ( CubeX brushedAluminum 0.5 )`
+
+Meaning:
+- Shrinks the root face of `CubeX` along local X
+- Moves that root face slightly forward
+- Leaves the forward tip at x = 1 unchanged
+
+Base flare on a vertical member:
+
+`Start -> DSY ( 1.2 0.8 1.2 ) DTY ( 0 0.1 0 ) I ( CubeY grayStone 0.35 )`
+
+Meaning:
+- Deforms only the base partition of `CubeY`
+- Useful for trunks, columns, and pedestal-like forms
+
+Asymmetric centered cube shaping:
+
+`Start -> DSX ( 1.3 1 1 ) DSY ( 1 0.8 1 ) DSZ ( 1 1 1.2 ) I ( Cube chromeSurface 0.2 )`
+
+Meaning:
+- Left-side vertices are stretched in X
+- Bottom-side vertices are compressed in Y
+- Back-side vertices are stretched in Z
+- Corners on the back-left-bottom octant receive all three deformations
+
+Deform first, then place and rotate:
+
+`Start -> DSZ ( 1 1 0.8 ) DTZ ( 0 0 0.15 ) A ( 45 1 ) T ( 2 0 0 ) I ( CubeZ oakPlanks 0.2 )`
+
+Meaning:
+- Reshapes the root face of `CubeZ` in its local space
+- Rotates the already-deformed beam around Y
+- Translates the result to x = 2
+
+
+9. Important caveats
+--------------------
+
+- `A` and `R` are synonyms in the current runtime.
+- Deformation is vertex-partition based, not a smooth lattice or curve modifier.
+- Corners can accumulate multiple deformation passes.
+- The deformation operators do not reset automatically; they persist in the
+  current state until changed or isolated inside a group.
+- Group blocks `[ ... ]` are the safest way to contain transform/deformation
+  side effects.
+- `CubeX`, `CubeY`, and `CubeZ` are best treated as anchored beam primitives.
+- The third argument in `I ( primitive texture scale )` is stored as instance
+  scalar metadata and is not the same thing as geometric size. Geometric size is
+  controlled by `S ( sx sy sz )`.
+
+
+10. Practical authoring rules
+-----------------------------
+
+- Use `Cube` when you want a centered solid.
+- Use `CubeX`, `CubeY`, or `CubeZ` when you want chained beam-like growth.
+- Use `DS*` to taper or widen the anchored side of a primitive.
+- Use `DT*` to shift the same partition after scaling it.
+- Use groups when combining auto-advance primitives with local one-off shaping.
+- When the result looks "inside out", check whether a corner is being hit by
+  more than one negative-partition deformation.

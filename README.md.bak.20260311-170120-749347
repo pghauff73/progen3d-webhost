@@ -1,0 +1,54 @@
+# ProGen3D Live Site
+
+This package wraps the modular ProGen3D grammar editor in a small PHP site with:
+
+- login and registration
+- private grammar storage
+- publish to gallery workflow
+- live public gallery viewer
+- documentation page
+- grammar reference page
+- copy-ready examples page
+
+## Run locally
+
+```bash
+php -S localhost:8000
+```
+
+Open:
+
+```text
+http://localhost:8000
+```
+
+## Package notes
+
+This streamlined package removes unused development-only artifacts and orphaned editor modules while keeping the active PHP site, editor, viewer, gallery, authentication flow, documentation pages, and published-grammar preview workflow intact.
+
+## Storage
+
+This build uses JSON file storage and will auto-create the following files inside `storage/` on first run:
+
+- `users.json`
+- `files.json`
+- `counters.json`
+
+Make sure PHP can write to the `storage/` directory.
+
+## Main pages
+
+- `index.php` — front page
+- `docs.php` — workflow documentation
+- `reference.php` — operator and syntax reference
+- `examples.php` — examples to copy or open in editor
+- `editor.php` — authenticated grammar editor page
+- `files.php` — authenticated file management
+- `gallery.php` — public gallery with live scene viewer
+- `view.php` — public read-only viewer for a published grammar
+
+## Notes
+
+- The editor under `assets/editor/` remains the working modular editor bundle.
+- The gallery and public viewer both reuse the same live scene renderer in read-only mode.
+- The current package is JSON-backed, not SQLite-backed.

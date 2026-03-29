@@ -1,0 +1,136 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Grammar Reader WebGLr2 – Structure Archetypes</title>
+  <link rel="stylesheet" href="../css/docs.css">
+</head>
+<body>
+<div class="page">
+    <h1>Versatile Structure Archetypes</h1>
+    <p>Here are versatile structure archetypes you can generate and combine, each with tunable variables and axis alignment (<code>0 = X</code>, <code>1 = Y</code>, <code>2 = Z</code>). These map well to the current BNF grammar surface used by the editor.</p>
+
+    <h2>Foundational Motifs</h2>
+
+    <h3>Spokes (Radial arrays)</h3>
+    <p><b>Description:</b> Instances radiate around a central axis at equal angular intervals.<br>
+        <b>Good for:</b> Hubs, starbursts, antennas, petals.<br>
+        <b>Key vars:</b> N (count), R (radius), axis, element scale.</p>
+
+    <h3>Ring (Toroidal loop)</h3>
+    <p><b>Description:</b> A closed loop of instances arranged around an axis.<br>
+        <b>Good for:</b> Wheels, collars, stadium tiers.<br>
+        <b>Key vars:</b> N (segments), R (major radius), scale, axis.</p>
+
+    <h3>Band (Linear sequence)</h3>
+    <p><b>Description:</b> A line of instances distributed along a span.<br>
+        <b>Good for:</b> Facades, ribs, tracks.<br>
+        <b>Key vars:</b> N (segments), span length, deformation mod, axis.</p>
+
+    <h3>Stack (Vertical column)</h3>
+    <p><b>Description:</b> Repeating instances ascending along an axis.<br>
+        <b>Good for:</b> Towers, pagodas, pillars.<br>
+        <b>Key vars:</b> H (levels), step height, taper profile, axis.</p>
+
+    <h3>Grid (2D lattice)</h3>
+    <p><b>Description:</b> N×N arrays on a plane.<br>
+        <b>Good for:</b> Floors, facades, shelving.<br>
+        <b>Key vars:</b> G (grid size), cell spacing, layering depth, axis orientation.</p>
+
+    <h2>Derived / Compound Motifs</h2>
+
+    <h3>RingStack (Concentric rings)</h3>
+    <p><b>Description:</b> Multiple rings stacked along an axis.<br>
+        <b>Good for:</b> Amphitheaters, turbine cages.<br>
+        <b>Key vars:</b> rings (count), per-ring N, vertical step, scale ramp.</p>
+
+    <h3>Spiral (Helical band)</h3>
+    <p><b>Description:</b> A band that winds around an axis with pitch.<br>
+        <b>Good for:</b> Stairs, DNA-like towers, ramps.<br>
+        <b>Key vars:</b> turns, pitch, radius ramp, axis.</p>
+
+    <h3>Fork (Branching)</h3>
+    <p><b>Description:</b> Splits a band/stack into multiple offspring.<br>
+        <b>Good for:</b> Trees, branching frames.<br>
+        <b>Key vars:</b> depth, branching factor, divergence angle.</p>
+
+    <h3>RadialGrid (Polar lattice)</h3>
+    <p><b>Description:</b> Concentric rings × radial spokes.<br>
+        <b>Good for:</b> Plazas, solar farms.<br>
+        <b>Key vars:</b> ring count, spokes count, ring spacing.</p>
+
+    <h3>Ribbon (Curved band)</h3>
+    <p><b>Description:</b> Band sampled along a spline.<br>
+        <b>Good for:</b> Bridges, ornament, aerodynamic skins.<br>
+        <b>Key vars:</b> curve function, thickness, twist, tessellation.</p>
+
+    <h2>Architectural / System Motifs</h2>
+
+    <h3>TerracedStack (Stepped setbacks)</h3>
+    <p><b>Description:</b> Stack with shrink factor per level.<br>
+        <b>Good for:</b> Ziggurats, skyscrapers.<br>
+        <b>Key vars:</b> floors, shrinkFactor, floorHeight.</p>
+
+    <h3>FaçadeBandGrid</h3>
+    <p><b>Description:</b> Band/grid combo forming window rows/columns.<br>
+        <b>Good for:</b> Buildings, wall systems.<br>
+        <b>Key vars:</b> band N, grid G, window spacing, mullion thickness.</p>
+
+    <h3>VaultedRing/Grid</h3>
+    <p><b>Description:</b> Grid with arched/ring elements.<br>
+        <b>Good for:</b> Halls, canopies.<br>
+        <b>Key vars:</b> span, arch height, axis.</p>
+
+    <h3>RadialCanopy</h3>
+    <p><b>Description:</b> Spokes + ring stack with upward bending.<br>
+        <b>Good for:</b> Pavilions, umbrellas.<br>
+        <b>Key vars:</b> spokes N, rings, curvature, axis.</p>
+
+    <h2>Fractal / Recursive Motifs</h2>
+
+    <h3>RecursiveRing</h3>
+    <p><b>Description:</b> Ring where each element emits a smaller ring.<br>
+        <b>Good for:</b> Filigree, fractal frames.<br>
+        <b>Key vars:</b> recursion depth, child scale, angle jitter.</p>
+
+    <h3>L-system Hybrid</h3>
+    <p><b>Description:</b> L-system lines mapped to instances.<br>
+        <b>Good for:</b> Trees, vines.<br>
+        <b>Key vars:</b> axiom/rules, iterations, segment scale, axis mapping.</p>
+
+    <h2>Symmetry &amp; Alignment Controls</h2>
+    <ul>
+        <li><b>Axis alignment:</b> Motifs accept axis ∈ {0,1,2}.</li>
+        <li><b>Mirroring:</b> Mirror planes across X/Y/Z for symmetry.</li>
+        <li><b>Dihedral:</b> Paired lobes on spokes.</li>
+        <li><b>Modulation:</b> Scale ramps, noise/jitter, dynamic scaling.</li>
+    </ul>
+
+    <h2>Suggested Variable Schema</h2>
+    <p><b>Global:</b> axis, scaleMin/max, spanMin/max, stepMin/max, randomSeed.</p>
+    <ul>
+        <li>Spokes: N, R, elementScale, jitterAngle</li>
+        <li>Ring: N, R, thickness, elevation</li>
+        <li>Band: N, span, mod, taper</li>
+        <li>Stack: H, step, taper, twist</li>
+        <li>Grid: G, cellSpan, layers</li>
+        <li>Spiral: turns, pitch, R0, dR</li>
+        <li>Fork: depth, branching, splitAngle</li>
+        <li>RingStack: rings, perRingN, ringStep</li>
+    </ul>
+
+    <h2>Example Compositions</h2>
+    <ul>
+        <li><b>Tower pavilion:</b> Stack(axis:1) base + RingStack(axis:1) canopy + Spokes(axis:1) ribs</li>
+        <li><b>Bridge:</b> Band(axis:0) deck + Ring(axis:2) arches + Grid(axis:2) truss cells</li>
+        <li><b>Stadium:</b> RadialGrid(axis:1) seating + RingStack(axis:1) tiers + Band(axis:0) entrances</li>
+    </ul>
+
+    <h2>Implementation Notes</h2>
+    <p>Use the format <code>Structure{n}{Type}{Axis}</code>. Align axes with rotations and normalized iterators. Extend the generator with Spiral, RingStack, and RadialGrid for richer outputs.</p>
+</div>
+
+</body>
+</html>

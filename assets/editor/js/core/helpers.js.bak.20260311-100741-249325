@@ -1,0 +1,155 @@
+
+// Extracted from original file lines 2583-2621
+"use strict";
+const log2 = (...a) => {
+   
+    const msg = `${a.join(" ")}`;
+    const out = (typeof document !== "undefined") && document.getElementById && document.getElementById("out");
+    if (out){ out.textContent += "\n" + msg; out.scrollTop = out.scrollHeight; }
+    else if (typeof console !== "undefined" && console.debug){ console.debug(msg); }
+  };
+
+
+
+
+
+/* ============= Minimal math (column-major) ===================== */
+const Mat4 = {
+  identity() { return new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]); },
+  multiply(a, b) { // c = a * b
+    const c = new Float32Array(16);
+    for (let col = 0; col < 4; col++) {
+      const bi = col * 4;
+      const b0 = b[bi + 0], b1 = b[bi + 1], b2 = b[bi + 2], b3 = b[bi + 3];
+      c[bi + 0] = a[0] * b0 + a[4] * b1 + a[8]  * b2 + a[12] * b3;
+      c[bi + 1] = a[1] * b0 + a[5] * b1 + a[9]  * b2 + a[13] * b3;
+      c[bi + 2] = a[2] * b0 + a[6] * b1 + a[10] * b2 + a[14] * b3;
+      c[bi + 3] = a[3] * b0 + a[7] * b1 + a[11] * b2 + a[15] * b3;
+    }
+    return c;
+  },
+  translation(tx, ty, tz) { const m = Mat4.identity(); m[12]=tx; m[13]=ty; m[14]=tz; return m; },
+  scale(sx, sy, sz)       { const m = Mat4.identity(); m[0]=sx; m[5]=sy; m[10]=sz; return m; },
+  rotX(rad) { const c=Math.cos(rad), s=Math.sin(rad); return new Float32Array([1,0,0,0, 0,c,s,0, 0,-s,c,0, 0,0,0,1]); },
+  rotY(rad) { const c=Math.cos(rad), s=Math.sin(rad); return new Float32Array([ c,0,-s,0, 0,1,0,0, s,0,c,0, 0,0,0,1]); },
+  rotZ(rad) { const c=Math.cos(rad), s=Math.sin(rad); return new Float32Array([ c,s,0,0, -s,c,0,0, 0,0,1,0, 0,0,0,1]); }
+};
+
+const Vec3 = {
+  make(x=0, y=0, z=0) { return { x, y, z }; },
+  add(a, b) { return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z }; },
+  mul(a, b) { return { x: a.x * b.x, y: a.y * b.y, z: a.z * b.z }; }
+};
+/* PG3D_LOG_BRIDGE_V1
+   Global logging bridge used by core modules (e.g. core/grammar.js).
+   - If editor-app.js registers PG3DConsole.renderLine, it will be used for styled console output.
+   - Falls back to simple DOM append or browser console.
+   - Debug gated via PG3D_DEBUG / ?debug=1 / localStorage.pg3d_debug=1
+*/
+(function () {
+  'use strict';
+
+  function __pg3d_now() {
+    try { return new Date().toLocaleTimeString(); } catch (e) { return ''; }
+  }
+
+  function __pg3d_getOut() {
+    try {
+      if (typeof document === 'undefined') return null;
+      return document.getElementById('out');
+    } catch (e) { return null; }
+  }
+
+  function __pg3d_domLine(kind, msg) {
+    const out = __pg3d_getOut();
+    if (!out) return false;
+    try {
+      const line = document.createElement('div');
+      line.className = 'console-line console-' + kind;
+
+      const time = document.createElement('span');
+      time.className = 'console-time';
+      time.textContent = '[' + __pg3d_now() + ']';
+
+      const text = document.createElement('span');
+      text.className = 'console-msg';
+      text.textContent = String(msg);
+
+      line.appendChild(time);
+      line.appendChild(text);
+      out.appendChild(line);
+      out.scrollTop = out.scrollHeight;
+      return true;
+    } catch (e) {
+      try {
+        out.textContent += '\n[' + __pg3d_now() + '] ' + String(msg);
+        return true;
+      } catch (e2) {}
+    }
+    return false;
+  }
+
+  function __pg3d_isDebugEnabled() {
+    try {
+      if (typeof window !== 'undefined' && window.PG3D_DEBUG === true) return true;
+
+      if (typeof window !== 'undefined') {
+        const ls = window.localStorage;
+        if (ls && (ls.getItem('pg3d_debug') === '1' || ls.getItem('PG3D_DEBUG') === '1')) return true;
+      }
+
+      if (typeof window !== 'undefined' && window.location && window.location.search) {
+        const q = String(window.location.search || '');
+        if (/(?:\?|&)debug=1(?:&|$)/.test(q) || /(?:\?|&)pg3d_debug=1(?:&|$)/.test(q)) return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+
+  function __pg3d_log(kind, msg, meta) {
+    const k = (kind === 'warn' || kind === 'error' || kind === 'info' || kind === 'debug') ? kind : 'info';
+    if (k === 'debug' && !__pg3d_isDebugEnabled()) return;
+
+    // Prefer editor-app.js styled console if registered
+    try {
+      if (typeof window !== 'undefined' && window.PG3DConsole && typeof window.PG3DConsole.renderLine === 'function') {
+        window.PG3DConsole.renderLine(k, String(msg), meta);
+        return;
+      }
+    } catch (e) {}
+
+    // Fallback DOM
+    if (__pg3d_domLine(k, msg)) return;
+
+    // Fallback devtools
+    try {
+      if (k === 'error') console.error(msg, meta || '');
+      else if (k === 'warn') console.warn(msg, meta || '');
+      else if (k === 'debug') console.debug(msg, meta || '');
+      else if (k === 'info') console.info(msg, meta || '');
+      else console.log(msg, meta || '');
+    } catch (e) {}
+  }
+
+  try {
+    if (typeof window !== 'undefined') {
+      window.PG3D_LOG = __pg3d_log;
+      window.PG3D_isDebugEnabled = __pg3d_isDebugEnabled;
+
+      // Backward compatibility for older code expecting log2(...)
+      if (typeof window.log2 !== 'function') {
+        window.log2 = function () {
+          try {
+            const parts = Array.prototype.slice.call(arguments).map((x) => {
+              if (typeof x === 'string') return x;
+              try { return JSON.stringify(x); } catch (e) { return String(x); }
+            });
+            __pg3d_log('info', parts.join(' '));
+          } catch (e) {
+            __pg3d_log('info', String(arguments[0] || ''));
+          }
+        };
+      }
+    }
+  } catch (e) {}
+})();

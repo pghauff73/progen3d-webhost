@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Grammar Reader WebGLr2 – Modular Editor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Montserrat:wght@700;900&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/editor.css">
+  <link rel="stylesheet" href="css/editor-redesign.css">
+  <link rel="stylesheet" href="css/editor-layout-target.css">
+  <link rel="stylesheet" href="css/editor-diagnostics.css">
+</head>
+<body>
+  <main class="app-shell">
+    <div class="editor-live-status" aria-live="polite" hidden>
+      <span id="status" class="pill pill-status ready">Ready. · Start: Start · Reachable: 1</span>
+      <span id="autoRunState" class="pill pill-auto idle">Auto-run idle</span>
+    </div>
+
+<div class="wrap">
+      <section class="card input-card">
+        <header>
+          <div class="card-title-wrap">
+            <h2>Grammar Input</h2>
+            <p class="card-subtitle">Write grammar rules on the left and let the viewer refresh automatically after four seconds of idle time.</p>
+          </div>
+          <div class="toolbar" id="toolbar">
+            <input id="nameId" class="text-input" placeholder="unique_name_identifier" aria-label="Type or choose identifier">
+            <select id="nameChooser" class="select-input" aria-label="Choose saved identifier"><option value="" disabled selected>No saved entries</option></select>
+            <button id="saveBtn" class="btn_save" title="Save To JSON">SaveToJSON</button>
+            <button id="wrapBtn" class="btn ghost" title="Toggle word wrap">⤶ Wrap: Off</button>
+            <button id="go" class="btn">Run Grammar</button>
+            <button id="btn-random" class="btn">Randomize</button>
+            <button id="clr" class="btn secondary">Clear</button>
+            <button id="openJsonBtn" class="btn ghost">Open JSON</button>
+            <button id="exportJsonBtn" class="btn secondary">Export JSON</button>
+            <button id="exportSTL" class="btn">Export STL</button>
+          </div>
+        </header>
+        <div class="body">
+          <div class="codewrap" id="codewrap">
+            <pre id="hl" class="highlighter"></pre>
+            <textarea id="src" wrap="off" spellcheck="false" placeholder="Enter Visual Grammar..." aria-label="Grammar code editor" style="white-space: pre;">Start -&gt; I ( Cube brushedAluminum 0.25 )</textarea>
+            <div id="se-hit" aria-hidden="true"><pre id="se-hit-pre" class="highlighter"></pre></div>
+            <div id="se-tooltip" role="tooltip"></div>
+          </div>
+        </div>
+      </section>
+
+      <div class="layout-splitter layout-splitter-v" aria-hidden="true" tabindex="-1"></div>
+
+      <section class="card viewer-card">
+        <header>
+          <div class="card-title-wrap">
+            <h2>Scene Viewer</h2>
+            <p class="card-subtitle">Angled-down home camera, enhanced key/fill/rim lighting, richer procedural materials, an XZ construction grid, an orientation axis widget, and XZ-plane auto orbit are built into the viewport.</p>
+          </div>
+          <div class="toolbar viewer-toolbar">
+            <button id="orbitToggle" class="btn ghost" title="Play/Pause slow orbit">▶ Auto Orbit</button>
+          </div>
+        </header>
+        <div class="body viewer-body">
+          <div class="viewer-stage">
+            <canvas id="glcanvas" aria-label="WebGL scene canvas">Your browser does not support the canvas element.</canvas>
+          </div>
+        </div>
+      </section>
+
+      <div class="layout-splitter layout-splitter-h" aria-hidden="true" tabindex="-1"></div>
+
+      <section class="card output-card">
+        <header>
+          <div class="card-title-wrap">
+            <h2>Console</h2>
+            <p class="card-subtitle">Run log, parser feedback, errors, and quick syntax cues directly beneath the scene viewer.</p>
+          </div>
+        </header>
+        <div class="body">
+          <div id="out" class="console-panel" aria-live="polite"></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script src="js/core/helpers.js"></script>
+  <script src="js/core/renderer.js"></script>
+  <script src="js/core/scene.js"></script>
+  <script src="js/core/scope-context.js"></script>
+  <script src="js/core/variables.js"></script>
+  <script src="js/core/substitution.js"></script>
+  <script src="js/core/math-eval.js"></script>
+  <script src="js/core/lexer-token.js"></script>
+  <script src="js/core/grammar.js"></script>
+  <script src="js/optional/smart-editor-v0.4.js"></script>
+  <script src="js/app/editor-app.js"></script>
+  <script src="js/app/storage.js"></script>
+  <script src="js/optional/progen3d-unified-grammar.js"></script>
+  <script src="js/app/actions-extra.js"></script>
+  <script src="js/app/ui-redesign.js"></script>
+  <script src="js/app/ui-layout-target.js"></script>
+  <script src="js/app/ui-resizable-layout.js"></script>
+  <script src="js/app/editor-diagnostics.js"></script>
+</body>
+</html>

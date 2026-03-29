@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Grammar Reader WebGLr2 - Modular Editor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Montserrat:wght@700;900&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/editor.css?v=20260315-galleryfix">
+  <link rel="stylesheet" href="css/editor-layout-target.css?v=20260315-galleryfix">
+  <link rel="stylesheet" href="css/editor-diagnostics.css?v=20260315-galleryfix">
+</head>
+<body>
+  <main class="app-shell">
+    <div class="editor-live-status" aria-live="polite" hidden>
+      <span id="status" class="pill pill-status ready">Ready. · Start: Start · Reachable: 1</span>
+      <span id="autoRunState" class="pill pill-auto idle">Auto-run idle</span>
+    </div>
+
+    <div class="editor-workspace">
+      <section class="card input-card">
+        <header>
+          <div class="card-title-wrap">
+            <h2>Grammar Input</h2>
+            <p class="card-subtitle">Write rules using the current BNF grammar on the left. Parameters, calls, conditionals, transforms, axis deformation, and instances all auto-run after four seconds of idle time.</p>
+          </div>
+          <div class="toolbar" id="toolbar">
+            <input id="editorFileNameInput" class="text-input" placeholder="unique_name_identifier" aria-label="Type or choose identifier">
+            <select id="editorFileSelect" class="select-input" aria-label="Choose saved identifier"><option value="" disabled selected>No saved entries</option></select>
+            <button id="editorLocalSaveBtn" class="btn_save" title="Save To JSON">SaveToJSON</button>
+            <button id="editorWordWrapBtn" class="btn ghost" title="Toggle word wrap">Wrap: Off</button>
+            <label id="debugToggleWrap" class="pg3d-debug-toggle" title="Toggle debug logging">
+              <input id="debugToggle" type="checkbox">
+              <span>Debug</span>
+            </label>
+            <button id="editorRunBtn" class="btn">Run Grammar</button>
+            <button id="btn-random" class="btn">Random</button>
+            <button id="editorClearBtn" class="btn secondary">Clear</button>
+            <button id="editorOpenJsonBtn" class="btn ghost">Open JSON</button>
+            <button id="editorExportJsonBtn" class="btn secondary">Export JSON</button>
+            <button id="editorExportStlBtn" class="btn">Export STL</button>
+          </div>
+        </header>
+        <div class="body">
+          <div class="editor-codepane" id="editorCodePane">
+            <pre id="editorHighlightLayer" class="highlighter"></pre>
+            <textarea id="editorSourceInput" wrap="off" spellcheck="false" placeholder="Enter grammar using the current BNF form..." aria-label="Grammar code editor" style="white-space: pre;">Start -&gt; Tower( 1.8 )
+Tower( h ) -&gt; S ( 1 h 1 ) I ( CubeY grayStone 0.25 )</textarea>
+            <div id="editorHitLayer" aria-hidden="true"><pre id="editorHitLayerContent" class="highlighter"></pre></div>
+            <div id="editorTooltip" role="tooltip"></div>
+          </div>
+        </div>
+      </section>
+
+      <div class="layout-splitter layout-splitter-v" aria-hidden="true" tabindex="-1"></div>
+
+      <section class="card viewer-card">
+        <header>
+          <div class="card-title-wrap">
+            <h2>Scene Viewer</h2>
+            <p class="card-subtitle">Angled-down home camera, enhanced key/fill/rim lighting, richer procedural materials, an XZ construction grid, an orientation axis widget, and XZ-plane auto orbit are built into the viewport.</p>
+          </div>
+          <div class="toolbar editor-viewer-toolbar">
+            <button id="editorOrbitToggleBtn" class="btn ghost" title="Play/Pause slow orbit">Auto Orbit</button>
+          </div>
+        </header>
+        <div class="body viewer-body">
+          <div class="editor-viewer-stage">
+            <canvas id="glcanvas" aria-label="WebGL scene canvas">Your browser does not support the canvas element.</canvas>
+          </div>
+        </div>
+      </section>
+
+      <div class="layout-splitter layout-splitter-h" aria-hidden="true" tabindex="-1"></div>
+
+      <section class="card output-card">
+        <header>
+          <div class="card-title-wrap">
+            <h2>Console</h2>
+            <p class="card-subtitle">Run log, parser feedback, BNF syntax hints, and quick diagnostics directly beneath the scene viewer.</p>
+          </div>
+        </header>
+        <div class="body">
+          <div id="editorConsoleOutput" class="editor-console-panel" aria-live="polite"></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script src="js/core/helpers.js?v=20260315-galleryfix"></script>
+  <script src="js/core/renderer.js?v=20260315-galleryfix"></script>
+  <script src="js/core/scene.js?v=20260315-galleryfix"></script>
+  <script src="js/core/scope-context.js?v=20260315-galleryfix"></script>
+  <script src="js/core/variables.js?v=20260315-galleryfix"></script>
+  <script src="js/core/substitution.js?v=20260315-galleryfix"></script>
+  <script src="js/core/math-eval.js?v=20260315-galleryfix"></script>
+  <script src="js/core/lexer-token.js?v=20260315-galleryfix"></script>
+  <script src="js/core/grammar.js?v=20260315-galleryfix"></script>
+  <script src="js/optional/smart-editor-v0.4.js?v=20260315-galleryfix"></script>
+  <script src="js/app/editor-app.js?v=20260315-galleryfix"></script>
+  <script src="js/app/storage.js?v=20260315-galleryfix"></script>
+  <script src="js/app/actions-extra.js?v=20260315-galleryfix"></script>
+  <script src="js/app/ui-redesign.js?v=20260315-galleryfix"></script>
+  <script src="js/app/ui-layout-target.js?v=20260315-galleryfix"></script>
+  <script src="js/app/ui-resizable-layout.js?v=20260315-galleryfix"></script>
+  <script src="js/app/editor-diagnostics.js?v=20260315-galleryfix"></script>
+</body>
+</html>

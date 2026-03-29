@@ -1,0 +1,481 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Legacy Deformed Cube Overlap Viewer</title>
+<style>
+  :root{
+    --bg:#0b1020;
+    --panel:#121933;
+    --panel2:#0f1530;
+    --text:#edf2ff;
+    --muted:#a9b6da;
+    --line:#28335e;
+    --accent:#77b0ff;
+    --accent2:#ffb86c;
+    --good:#88e39b;
+    --warn:#ffd166;
+    --bad:#ff7b7b;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font:14px/1.4 Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif}
+  .app{
+    display:grid;
+    grid-template-columns:620px 1fr;
+    grid-template-rows:1fr 220px;
+    height:100vh;
+    gap:10px;
+    padding:10px;
+  }
+  .panel,.viewer,.console{
+    background:linear-gradient(180deg,var(--panel),var(--panel2));
+    border:1px solid var(--line);
+    border-radius:14px;
+    overflow:hidden;
+    min-width:0;
+    min-height:0;
+  }
+  .panel{
+    grid-row:1 / span 2;
+    display:flex;
+    flex-direction:column;
+  }
+  .panel-header,.viewer-header,.console-header{
+    padding:12px 14px;
+    border-bottom:1px solid var(--line);
+    font-weight:700;
+    letter-spacing:.02em;
+  }
+  .legacy-banner{
+    margin:10px;
+    padding:10px 12px;
+    border:1px solid rgba(255, 209, 102, 0.36);
+    border-radius:12px;
+    background:rgba(255, 209, 102, 0.08);
+    color:var(--warn);
+    font-size:12px;
+    line-height:1.45;
+  }
+  .panel-body{
+    padding:12px;
+    overflow:auto;
+  }
+  .group{
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:10px;
+    margin-bottom:10px;
+    background:rgba(255,255,255,.02);
+  }
+  .group-title{
+    font-size:12px;
+    font-weight:700;
+    color:var(--muted);
+    margin-bottom:8px;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+  }
+  .row{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+    margin-bottom:8px;
+  }
+  .row3{
+    display:grid;
+    grid-template-columns:1fr 1fr 1fr;
+    gap:8px;
+    margin-bottom:8px;
+  }
+  .deform-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+  }
+  .deform-card{
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:10px;
+    background:rgba(255,255,255,.02);
+    min-width:0;
+  }
+  label{
+    display:block;
+    font-size:12px;
+    color:var(--muted);
+    margin-bottom:4px;
+  }
+  input,select,button,textarea{
+    width:100%;
+    border-radius:10px;
+    border:1px solid var(--line);
+    background:#0b1230;
+    color:var(--text);
+    padding:9px 10px;
+    outline:none;
+  }
+  input[type="checkbox"]{
+    width:auto;
+    transform:translateY(2px);
+    margin-right:6px;
+  }
+  button{
+    cursor:pointer;
+    font-weight:700;
+    background:linear-gradient(180deg,#1c4fa5,#153a7b);
+  }
+  button:hover{filter:brightness(1.08)}
+  .button-row{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+    margin-top:8px;
+  }
+  .viewer{
+    position:relative;
+    display:flex;
+    flex-direction:column;
+  }
+  .viewer-body{
+    position:relative;
+    flex:1;
+    background:
+      radial-gradient(circle at 50% 45%, rgba(255,255,255,.05), rgba(255,255,255,0) 45%),
+      linear-gradient(180deg,#091127,#070c18);
+  }
+  canvas{
+    width:100%;
+    height:100%;
+    display:block;
+  }
+  .hud{
+    position:absolute;
+    right:12px;
+    top:12px;
+    width:280px;
+    padding:10px;
+    background:rgba(6,10,24,.78);
+    border:1px solid var(--line);
+    border-radius:12px;
+    backdrop-filter:blur(8px);
+    font-size:12px;
+  }
+  .hud .title{font-weight:700;margin-bottom:6px}
+  .hud .line{display:flex;justify-content:space-between;gap:8px;margin:3px 0}
+  .badge{
+    display:inline-block;
+    padding:2px 8px;
+    border-radius:999px;
+    border:1px solid var(--line);
+    background:rgba(255,255,255,.04);
+    font-size:12px;
+  }
+  .console{
+    display:flex;
+    flex-direction:column;
+  }
+  .console-body{
+    flex:1;
+    padding:0;
+    overflow:hidden;
+  }
+  textarea{
+    height:100%;
+    resize:none;
+    border:none;
+    border-radius:0;
+    background:#070d1d;
+    padding:12px;
+    font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  .small{
+    font-size:12px;
+    color:var(--muted);
+  }
+  .checkline{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    color:var(--muted);
+    font-size:12px;
+    padding-top:6px;
+  }
+  @media (max-width: 1280px){
+    .app{
+      grid-template-columns:520px 1fr;
+    }
+  }
+  @media (max-width: 1080px){
+    .app{
+      grid-template-columns:1fr;
+      grid-template-rows:auto minmax(420px, 1fr) 220px;
+    }
+    .panel{
+      grid-row:auto;
+    }
+    .deform-grid{
+      grid-template-columns:1fr;
+    }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="panel">
+    <div class="panel-header">Inputs</div>
+    <div class="legacy-banner">
+      Legacy utility: this overlap/deformation viewer is separate from the active grammar designer.
+      Use <code>designer.html</code> for the current grammar generation and scene workflow.
+    </div>
+    <div class="panel-body">
+
+      <div class="group">
+        <div class="group-title">Run</div>
+        <div class="row">
+          <div>
+            <label for="seed">Seed</label>
+            <input id="seed" type="number" value="12345" />
+          </div>
+          <div>
+            <label for="targetOverlap">Target Overlap %</label>
+            <input id="targetOverlap" type="number" min="0" max="100" step="0.1" value="30" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label for="metric">Target Metric</label>
+            <select id="metric">
+              <option value="iouPercent">iouPercent</option>
+              <option value="percentOfA">percentOfA</option>
+              <option value="percentOfB">percentOfB</option>
+              <option value="percentOfSmaller">percentOfSmaller</option>
+            </select>
+          </div>
+          <div>
+            <label for="cubeType">Cube Type</label>
+            <select id="cubeType">
+              <option value="Cube">Cube</option>
+              <option value="CubeX">CubeX</option>
+              <option value="CubeY">CubeY</option>
+              <option value="CubeZ">CubeZ</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row3">
+          <div>
+            <label for="gridResolution">Grid Res</label>
+            <input id="gridResolution" type="number" min="8" max="96" step="1" value="34" />
+          </div>
+          <div>
+            <label for="maxIterations">Iterations</label>
+            <input id="maxIterations" type="number" min="4" max="60" step="1" value="26" />
+          </div>
+          <div>
+            <label for="epsPercent">Tolerance %</label>
+            <input id="epsPercent" type="number" min="0.01" max="10" step="0.01" value="0.25" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label for="startDistanceMin">Start Dist Min</label>
+            <input id="startDistanceMin" type="number" step="0.1" value="2.5" />
+          </div>
+          <div>
+            <label for="startDistanceMax">Start Dist Max</label>
+            <input id="startDistanceMax" type="number" step="0.1" value="6" />
+          </div>
+        </div>
+
+        <div class="button-row">
+          <button id="goBtn" type="button">Go</button>
+          <button id="newSeedBtn" type="button">New Seed</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Random Deformation</div>
+        <div class="deform-grid">
+          <div class="deform-card">
+            <div class="group-title">Shared DS / DT</div>
+            <div class="row3">
+              <div>
+                <label for="aScaleX">Cube A Scale X</label>
+                <input id="aScaleX" type="number" step="0.01" value="1" />
+              </div>
+              <div>
+                <label for="aScaleY">Cube A Scale Y</label>
+                <input id="aScaleY" type="number" step="0.01" value="1" />
+              </div>
+              <div>
+                <label for="aScaleZ">Cube A Scale Z</label>
+                <input id="aScaleZ" type="number" step="0.01" value="1" />
+              </div>
+            </div>
+            <div class="row3">
+              <div>
+                <label for="bScaleX">Cube B Scale X</label>
+                <input id="bScaleX" type="number" step="0.01" value="1" />
+              </div>
+              <div>
+                <label for="bScaleY">Cube B Scale Y</label>
+                <input id="bScaleY" type="number" step="0.01" value="1" />
+              </div>
+              <div>
+                <label for="bScaleZ">Cube B Scale Z</label>
+                <input id="bScaleZ" type="number" step="0.01" value="1" />
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <label for="sharedDsxMin">DSX Min</label>
+                <input id="sharedDsxMin" type="number" step="0.01" value="1" />
+              </div>
+              <div>
+                <label for="sharedDsxMax">DSX Max</label>
+                <input id="sharedDsxMax" type="number" step="0.01" value="1" />
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <label for="sharedDsyMin">DSY Min</label>
+                <input id="sharedDsyMin" type="number" step="0.01" value="1" />
+              </div>
+              <div>
+                <label for="sharedDsyMax">DSY Max</label>
+                <input id="sharedDsyMax" type="number" step="0.01" value="1" />
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <label for="sharedDszMin">DSZ Min</label>
+                <input id="sharedDszMin" type="number" step="0.01" value="1" />
+              </div>
+              <div>
+                <label for="sharedDszMax">DSZ Max</label>
+                <input id="sharedDszMax" type="number" step="0.01" value="1" />
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <label for="sharedDtxMin">DTX Min</label>
+                <input id="sharedDtxMin" type="number" step="0.01" value="0" />
+              </div>
+              <div>
+                <label for="sharedDtxMax">DTX Max</label>
+                <input id="sharedDtxMax" type="number" step="0.01" value="0" />
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <label for="sharedDtyMin">DTY Min</label>
+                <input id="sharedDtyMin" type="number" step="0.01" value="0" />
+              </div>
+              <div>
+                <label for="sharedDtyMax">DTY Max</label>
+                <input id="sharedDtyMax" type="number" step="0.01" value="0" />
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <label for="sharedDtzMin">DTZ Min</label>
+                <input id="sharedDtzMin" type="number" step="0.01" value="0" />
+              </div>
+              <div>
+                <label for="sharedDtzMax">DTZ Max</label>
+                <input id="sharedDtzMax" type="number" step="0.01" value="0" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Orientation Ranges (Radians)</div>
+        <div class="row">
+          <div>
+            <label for="thetaMin">Theta Min</label>
+            <input id="thetaMin" type="number" step="0.01" value="0" />
+          </div>
+          <div>
+            <label for="thetaMax">Theta Max</label>
+            <input id="thetaMax" type="number" step="0.01" value="6.283185307179586" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="phiMin">Phi Min</label>
+            <input id="phiMin" type="number" step="0.01" value="-1.5707963267948966" />
+          </div>
+          <div>
+            <label for="phiMax">Phi Max</label>
+            <input id="phiMax" type="number" step="0.01" value="1.5707963267948966" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="psiMin">Psi Min</label>
+            <input id="psiMin" type="number" step="0.01" value="0" />
+          </div>
+          <div>
+            <label for="psiMax">Psi Max</label>
+            <input id="psiMax" type="number" step="0.01" value="6.283185307179586" />
+          </div>
+        </div>
+        <div class="checkline">
+          <label><input id="uniformSphere" type="checkbox" checked />Uniform sphere phi sampling</label>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Viewer</div>
+        <div class="row3">
+          <div>
+            <label for="viewYaw">View Yaw</label>
+            <input id="viewYaw" type="number" step="0.01" value="0.65" />
+          </div>
+          <div>
+            <label for="viewPitch">View Pitch</label>
+            <input id="viewPitch" type="number" step="0.01" value="-0.45" />
+          </div>
+          <div>
+            <label for="viewZoom">Zoom</label>
+            <input id="viewZoom" type="number" step="0.1" value="6.2" />
+          </div>
+        </div>
+        <div class="small">Drag in the viewer to orbit. Mouse wheel zooms.</div>
+      </div>
+    </div>
+  </aside>
+
+  <section class="viewer">
+    <div class="viewer-header">3D Viewer</div>
+    <div class="viewer-body">
+      <canvas id="viewerCanvas"></canvas>
+      <div class="hud" id="hud">
+        <div class="title">Result</div>
+        <div class="line"><span>Status</span><span class="badge" id="hudStatus">Idle</span></div>
+        <div class="line"><span>Metric</span><span id="hudMetric">-</span></div>
+        <div class="line"><span>Target %</span><span id="hudTarget">-</span></div>
+        <div class="line"><span>Actual %</span><span id="hudActual">-</span></div>
+        <div class="line"><span>Surface Area</span><span id="hudSurface">-</span></div>
+        <div class="line"><span>Distance</span><span id="hudDistance">-</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="console">
+    <div class="console-header">Console</div>
+    <div class="console-body">
+      <textarea id="consoleOut" spellcheck="false"></textarea>
+    </div>
+  </section>
+</div>
+
+  <script src="cube.js?v=20260315-legacy-note"></script>
+</body>
+</html>

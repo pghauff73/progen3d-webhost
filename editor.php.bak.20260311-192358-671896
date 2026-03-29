@@ -1,0 +1,500 @@
+<?php
+require __DIR__ . '/includes/bootstrap.php';
+require_login();
+$user = current_user();
+$initialFileId = (int) ($_GET['file'] ?? 0);
+$copyFileId = (int) ($_GET['copy'] ?? 0);
+$example = site_example_by_slug($_GET['example'] ?? '');
+$editorHead = <<<'HTML'
+<link rel="stylesheet" href="assets/editor/css/editor.css">
+<link rel="stylesheet" href="assets/editor/css/editor-redesign.css">
+<link rel="stylesheet" href="assets/editor/css/editor-layout-target.css">
+<link rel="stylesheet" href="assets/editor/css/editor-diagnostics.css">
+<style>
+  .editor-inline-shell {
+    background: #0b1120;
+    min-height: min(100vh, 1560px);
+  }
+  .editor-stage.panel-fill {
+    padding: 0;
+    overflow: hidden;
+    background: rgba(2, 6, 23, .92);
+  }
+  .editor-stage .editor-runtime-frame {
+    display: block;
+    width: 100%;
+    min-height: 1320px;
+    border: 0;
+    background: #0b1120;
+  }
+  @media (max-width: 1040px) {
+    .editor-stage .editor-runtime-frame {
+      min-height: 1200px;
+    }
+  }
+</style>
+HTML;
+render_header('Editor', 'editor', ['body_class' => 'editor-integrated-page', 'extra_head' => $editorHead]);
+?>
+<main class="editor-page-shell">
+  <section class="site-shell editor-topbar editor-topbar--compact">
+    <div class="editor-topbar__main">
+      <span class="page-kicker">Inline authoring workspace</span>
+      <h1>Grammar editor</h1>
+      <p class="page-intro">A wider, calmer workspace with the project rail on the left and the inline grammar IDE taking the full stage on the right.</p>
+    </div>
+    <div class="editor-topbar__meta" aria-label="Editor highlights">
+      <span class="editor-meta-pill">Inline modular editor</span>
+      <span class="editor-meta-pill">SVEC viewer</span>
+      <span class="editor-meta-pill">Gallery publishing</span>
+      <a class="btn btn-secondary" href="examples.php">Examples</a>
+      <a class="btn btn-secondary" href="reference.php">Reference</a>
+      <a class="btn btn-primary" href="files.php">My files</a>
+    </div>
+  </section>
+
+  <section class="site-shell editor-layout editor-layout--refined">
+    <aside class="editor-sidebar panel">
+      <div class="sidebar-section sidebar-section--file">
+        <span class="sidebar-kicker">Project</span>
+        <label>Title
+          <input id="siteFileTitle" type="text" maxlength="160" placeholder="Untitled grammar">
+        </label>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-section__head">
+          <h2>Actions</h2>
+          <span class="sidebar-caption">Draft, run, and publish</span>
+        </div>
+        <div class="stack-actions stack-actions--grid">
+          <button id="newFileBtn" class="btn btn-secondary" type="button">New</button>
+          <button id="runGrammarBtn" class="btn btn-secondary" type="button">Run</button>
+          <button id="saveGrammarBtn" class="btn btn-primary" type="button">Save</button>
+          <button id="publishGrammarBtn" class="btn btn-primary" type="button">Publish</button>
+          <button id="unpublishGrammarBtn" class="btn btn-secondary stack-actions__wide" type="button">Unpublish</button>
+        </div>
+      </div>
+
+      <div class="sidebar-section sidebar-section--status">
+        <div class="sidebar-section__head">
+          <h2>Status</h2>
+          <span class="sidebar-caption">Current workspace state</span>
+        </div>
+        <div class="sidebar-status-grid">
+          <div class="sidebar-status-item">
+            <span class="sidebar-status-label">Current file</span>
+            <strong id="currentFileLabel">New unsaved grammar</strong>
+          </div>
+          <div class="sidebar-status-item">
+            <span class="sidebar-status-label">Editor</span>
+            <strong id="editorStatus">Loading editor…</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-section__head">
+          <h2>Workflow</h2>
+          <span class="sidebar-caption">How this page is arranged</span>
+        </div>
+        <p>Keep authoring in the wide inline editor, use the SVEC viewer to inspect forms, then save drafts or publish directly from this rail.</p>
+      </div>
+      <?php if ($example): ?>
+        <div class="sidebar-section sidebar-section--accent">
+          <div class="sidebar-section__head">
+            <h2>Loaded example</h2>
+            <span class="sidebar-caption">Ready on load</span>
+          </div>
+          <p><?= e($example['title']) ?> will be injected into the editor as soon as the runtime is ready.</p>
+        </div>
+      <?php endif; ?>
+      <div class="sidebar-section">
+        <div class="sidebar-section__head">
+          <h2>Reference links</h2>
+          <span class="sidebar-caption">Keep nearby while authoring</span>
+        </div>
+        <div class="help-links help-links--grid">
+          <a class="btn btn-secondary btn-sm" href="docs.php">Docs</a>
+          <a class="btn btn-secondary btn-sm" href="reference.php">Reference</a>
+          <a class="btn btn-secondary btn-sm" href="examples.php">Examples</a>
+        </div>
+      </div>
+    </aside>
+
+    <section class="editor-stage panel panel-fill">
+      <div class="editor-inline-shell">
+        <iframe
+          id="editorRuntimeFrame"
+          class="editor-runtime-frame"
+          src="assets/editor/editor-modular.html"
+          title="ProGen3D modular editor runtime"
+          loading="eager"
+          referrerpolicy="same-origin"
+        ></iframe>
+      </div>
+    </section>
+  </section>
+</main>
+<script>
+const csrfToken = <?= json_encode(csrf_token()) ?>;
+const initialFileId = <?= json_encode($initialFileId) ?>;
+const copyFileId = <?= json_encode($copyFileId) ?>;
+const exampleContent = <?= json_encode($example['grammar'] ?? null, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+const exampleTitle = <?= json_encode($example['title'] ?? null, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+const writerDraftStorageKey = 'p3d_writer_draft_v1';
+const defaultGrammar = "Start -> I ( Cube brushedAluminum 0.25 )";
+let currentFileId = initialFileId || null;
+let editorReady = false;
+let pendingContent = null;
+let pendingRunAfterSet = true;
+let runtimeChromeInjected = false;
+let initialDataLoaded = false;
+
+function editorFrame() {
+  return document.getElementById('editorRuntimeFrame');
+}
+
+function editorWindow() {
+  const frame = editorFrame();
+  return frame ? frame.contentWindow : null;
+}
+
+function editorDoc() {
+  const win = editorWindow();
+  try {
+    return win ? win.document : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function editorTextArea() {
+  const doc = editorDoc();
+  return doc ? doc.getElementById('src') : null;
+}
+
+function editorRunButton() {
+  const doc = editorDoc();
+  return doc ? doc.getElementById('go') : null;
+}
+
+function runtimeIsReady() {
+  return !!(editorTextArea() && editorRunButton());
+}
+
+function waitForRuntimeReady(maxAttempts = 100, delayMs = 50) {
+  return new Promise((resolve, reject) => {
+    let attempts = 0;
+    function check() {
+      if (runtimeIsReady()) {
+        resolve(true);
+        return;
+      }
+      attempts += 1;
+      if (attempts >= maxAttempts) {
+        reject(new Error('Editor runtime controls did not become ready in time.'));
+        return;
+      }
+      window.setTimeout(check, delayMs);
+    }
+    check();
+  });
+}
+
+function getEditorText() {
+  const textarea = editorTextArea();
+  return textarea ? textarea.value : '';
+}
+
+function clickRun() {
+  const goBtn = editorRunButton();
+  if (goBtn) goBtn.click();
+}
+
+function setEditorText(value, runAfter = true) {
+  const textarea = editorTextArea();
+  if (!textarea) {
+    pendingContent = value || '';
+    pendingRunAfterSet = !!runAfter;
+    return;
+  }
+  textarea.value = value || '';
+  textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  textarea.dispatchEvent(new Event('change', { bubbles: true }));
+  if (runAfter) {
+    window.setTimeout(() => clickRun(), 30);
+  }
+}
+
+function setStatus(message) {
+  const el = document.getElementById('editorStatus');
+  if (el) el.textContent = message;
+}
+
+function setCurrentLabel(text) {
+  const el = document.getElementById('currentFileLabel');
+  if (el) el.textContent = text;
+}
+
+function getFileTitleInput() {
+  return document.getElementById('siteFileTitle');
+}
+
+function getFileTitle() {
+  const input = getFileTitleInput();
+  const raw = input ? input.value.trim() : '';
+  return raw || 'Untitled grammar';
+}
+
+function setFileTitle(value) {
+  const input = getFileTitleInput();
+  if (input) input.value = value || '';
+}
+
+async function api(action, payload = {}, method = 'POST') {
+  const options = {
+    method,
+    headers: { 'Accept': 'application/json', 'X-CSRF-Token': csrfToken }
+  };
+  if (method !== 'GET') {
+    options.headers['Content-Type'] = 'application/json';
+    options.body = JSON.stringify(payload);
+  }
+  const response = await fetch('api/file.php?action=' + encodeURIComponent(action), options);
+  const data = await response.json().catch(() => ({ ok: false, error: 'Invalid server response.' }));
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || 'Request failed.');
+  }
+  return data;
+}
+
+function updateWorkspaceMeta(options = {}) {
+  const isExisting = !!currentFileId;
+  const title = getFileTitle() || 'Untitled grammar';
+  if (isExisting) {
+    setCurrentLabel(title);
+  } else {
+    setCurrentLabel('New unsaved grammar');
+  }
+  const unpublishBtn = document.getElementById('unpublishGrammarBtn');
+  if (unpublishBtn) {
+    unpublishBtn.disabled = !isExisting;
+  }
+  if (options.status) {
+    setStatus(options.status);
+  }
+}
+
+function injectRuntimeChrome(doc) {
+  if (!doc || runtimeChromeInjected || doc.querySelector('style[data-integrated-editor-style="1"]')) return;
+  const style = doc.createElement('style');
+  style.setAttribute('data-integrated-editor-style', '1');
+  style.textContent = `
+    html, body {
+      background: #0b1120 !important;
+    }
+    #pg3d-hero,
+    .app-footer,
+    .status-strip,
+    #nameId,
+    #nameChooser,
+    #saveBtn,
+    #openJsonBtn,
+    #exportJsonBtn {
+      display: none !important;
+    }
+    .app-shell {
+      width: 100% !important;
+      min-height: 100% !important;
+      padding: 0 !important;
+      margin: 0 !important;
+    }
+    .wrap {
+      padding-top: 0 !important;
+    }
+  `;
+  doc.head.appendChild(style);
+  runtimeChromeInjected = true;
+}
+
+async function loadFileIntoEditor(fileId, mode = 'file') {
+  const action = mode === 'copy' ? 'get_public' : 'get';
+  const response = await fetch(
+    'api/file.php?action=' + encodeURIComponent(action) + '&id=' + encodeURIComponent(fileId),
+    {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' }
+    }
+  );
+  const data = await response.json().catch(() => ({ ok: false, error: 'Invalid server response.' }));
+  if (!response.ok || !data.ok || !data.file) {
+    throw new Error(data.error || 'Could not load file.');
+  }
+
+  const file = data.file;
+  currentFileId = mode === 'copy' ? null : Number(file.id || 0) || null;
+  setFileTitle(mode === 'copy' ? ((file.title || 'Untitled grammar') + ' (Copy)') : (file.title || 'Untitled grammar'));
+  setEditorText(file.content || defaultGrammar, true);
+  updateWorkspaceMeta({ status: mode === 'copy' ? 'Copied published grammar.' : 'Loaded saved grammar.' });
+}
+
+function consumeWriterDraft() {
+  try {
+    const raw = window.localStorage.getItem(writerDraftStorageKey);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    const grammar = typeof parsed?.grammar === 'string' ? parsed.grammar.trim() : '';
+    if (!grammar) return false;
+    const title = typeof parsed?.title === 'string' ? parsed.title.trim() : '';
+    currentFileId = null;
+    setFileTitle(title || '');
+    setEditorText(grammar, true);
+    window.localStorage.removeItem(writerDraftStorageKey);
+    updateWorkspaceMeta({ status: 'Loaded writer draft.' });
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+async function loadInitialData() {
+  if (initialDataLoaded) return;
+  initialDataLoaded = true;
+
+  if (copyFileId) {
+    await loadFileIntoEditor(copyFileId, 'copy');
+    return;
+  }
+  if (initialFileId) {
+    await loadFileIntoEditor(initialFileId, 'file');
+    return;
+  }
+  if (exampleContent) {
+    currentFileId = null;
+    setFileTitle(exampleTitle || 'Example grammar');
+    setEditorText(exampleContent, true);
+    updateWorkspaceMeta({ status: 'Loaded example.' });
+    return;
+  }
+  if (consumeWriterDraft()) {
+    return;
+  }
+  currentFileId = null;
+  setFileTitle('');
+  setEditorText(defaultGrammar, true);
+  updateWorkspaceMeta({ status: 'Ready.' });
+}
+
+async function saveGrammar(publish = false) {
+  const content = getEditorText().trim();
+  if (!content) {
+    throw new Error('Grammar content is empty.');
+  }
+  const payload = {
+    file_id: currentFileId,
+    title: getFileTitle(),
+    content
+  };
+  const result = await api(publish ? 'publish' : 'save', payload);
+  if (result.file && result.file.id) {
+    currentFileId = Number(result.file.id) || currentFileId;
+  }
+  updateWorkspaceMeta({
+    status: publish ? 'Published to gallery.' : 'Saved.'
+  });
+}
+
+async function unpublishGrammar() {
+  if (!currentFileId) {
+    throw new Error('Save the grammar before unpublishing.');
+  }
+  await api('unpublish', { file_id: currentFileId });
+  updateWorkspaceMeta({ status: 'Removed from gallery.' });
+}
+
+function bindSidebarActions() {
+  const newBtn = document.getElementById('newFileBtn');
+  const runBtn = document.getElementById('runGrammarBtn');
+  const saveBtn = document.getElementById('saveGrammarBtn');
+  const publishBtn = document.getElementById('publishGrammarBtn');
+  const unpublishBtn = document.getElementById('unpublishGrammarBtn');
+  const titleInput = getFileTitleInput();
+
+  newBtn?.addEventListener('click', () => {
+    currentFileId = null;
+    setFileTitle('');
+    setEditorText(defaultGrammar, true);
+    updateWorkspaceMeta({ status: 'New grammar started.' });
+  });
+
+  runBtn?.addEventListener('click', () => {
+    clickRun();
+    setStatus('Run requested.');
+  });
+
+  saveBtn?.addEventListener('click', async () => {
+    try {
+      setStatus('Saving…');
+      await saveGrammar(false);
+    } catch (error) {
+      setStatus(error.message || 'Save failed.');
+    }
+  });
+
+  publishBtn?.addEventListener('click', async () => {
+    try {
+      setStatus('Publishing…');
+      await saveGrammar(true);
+    } catch (error) {
+      setStatus(error.message || 'Publish failed.');
+    }
+  });
+
+  unpublishBtn?.addEventListener('click', async () => {
+    try {
+      setStatus('Unpublishing…');
+      await unpublishGrammar();
+    } catch (error) {
+      setStatus(error.message || 'Unpublish failed.');
+    }
+  });
+
+  titleInput?.addEventListener('input', () => updateWorkspaceMeta());
+}
+
+async function onRuntimeLoaded() {
+  try {
+    await waitForRuntimeReady();
+    const doc = editorDoc();
+    if (!doc) {
+      throw new Error('Could not access editor runtime.');
+    }
+    injectRuntimeChrome(doc);
+    editorReady = true;
+    setStatus('Editor ready.');
+    if (pendingContent !== null) {
+      const value = pendingContent;
+      const runAfter = pendingRunAfterSet;
+      pendingContent = null;
+      pendingRunAfterSet = true;
+      setEditorText(value, runAfter);
+    }
+    await loadInitialData();
+  } catch (error) {
+    setStatus(error.message || 'Could not load editor runtime.');
+  }
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  bindSidebarActions();
+  updateWorkspaceMeta({ status: 'Loading editor…' });
+  const frame = editorFrame();
+  if (frame) {
+    frame.addEventListener('load', onRuntimeLoaded, { once: true });
+  } else {
+    setStatus('Editor frame not found.');
+  }
+});
+</script>
+<?php render_footer(); ?>

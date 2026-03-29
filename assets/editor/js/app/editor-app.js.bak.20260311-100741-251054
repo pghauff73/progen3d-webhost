@@ -1,0 +1,495 @@
+(function () {
+  'use strict';
+
+  const need = (id) => {
+    const el = document.getElementById(id);
+    if (!el) console.warn(`[UI] Missing element #${id}`);
+    return el;
+  };
+
+  const src            = need('src');
+  const hl             = need('hl');
+  const codewrap       = need('codewrap');
+  const wrapBtn        = need('wrapBtn');
+  const out            = need('out');
+  const goBtn          = need('go');
+  const clrBtn         = need('clr');
+  const statusEl       = need('status');
+  const autoRunEl      = need('autoRunState');
+  const orbitToggle    = need('orbitToggle');
+  const exportSTLBtn   = need('exportSTL');
+  const refDock        = need('refDock');
+  const refHead        = need('refHead');
+  const refToggleLabel = need('refToggleLabel');
+
+  if (!src || !hl || !goBtn || !clrBtn) return;
+
+  function hasSmartEditor() {
+    return !!(window.SmartEditor && typeof window.SmartEditor.refresh === 'function');
+  }
+
+  function setStatus(message, tone = 'ready') {
+    if (!statusEl) return;
+    statusEl.textContent = message;
+    statusEl.className = `pill pill-status ${tone}`;
+  }
+
+  function setAutoRunState(message, tone = 'idle') {
+    if (!autoRunEl) return;
+    autoRunEl.textContent = message;
+    autoRunEl.className = `pill pill-auto ${tone}`;
+  }
+
+  function renderConsoleLine(kind, text) {
+    if (!out) return;
+    const line = document.createElement('div');
+    line.className = `console-line console-${kind}`;
+
+    const time = document.createElement('span');
+    time.className = 'console-time';
+    time.textContent = `[${new Date().toLocaleTimeString()}]`;
+
+    const msg = document.createElement('span');
+    msg.className = 'console-msg';
+    msg.textContent = String(text);
+
+    line.appendChild(time);
+    line.appendChild(msg);
+    out.appendChild(line);
+    out.scrollTop = out.scrollHeight;
+  }
+
+  /* PG3D_CONSOLE_BRIDGE_V1
+     Register canonical styled console writer for core modules.
+     Core modules call window.PG3D_LOG(kind, message, meta).
+  */
+  (function () {
+    try {
+      if (typeof window === 'undefined') return;
+      window.PG3DConsole = window.PG3DConsole || {};
+      window.PG3DConsole.renderLine = function (kind, message, meta) {
+        // meta currently unused but reserved for future structured diagnostics
+        renderConsoleLine(kind, message);
+      };
+      // Ensure PG3D_LOG exists (helpers.js defines it early); if not, create minimal wrapper.
+      if (typeof window.PG3D_LOG !== 'function') {
+        window.PG3D_LOG = function (kind, message, meta) {
+          const k = (kind === 'warn' || kind === 'error' || kind === 'debug' || kind === 'info') ? kind : 'info';
+          if (k === 'debug') {
+            try {
+              const enabled = (window.PG3D_DEBUG === true)
+                || (window.localStorage && (window.localStorage.getItem('pg3d_debug') === '1' || window.localStorage.getItem('PG3D_DEBUG') === '1'))
+                || (window.location && /(?:\?|&)debug=1(?:&|$)/.test(String(window.location.search || '')));
+              if (!enabled) return;
+            } catch (e) {}
+          }
+          window.PG3DConsole.renderLine(k, String(message), meta);
+        };
+      }
+    } catch (e) {}
+  })();
+
+
+  const info  = (text) => renderConsoleLine('info', text);
+  const warn  = (text) => renderConsoleLine('warn', text);
+  const error = (text) => renderConsoleLine('error', text);
+
+  let scene;
+  let renderer;
+  try {
+    if (typeof Scene !== 'function' || typeof WebGLSceneRenderer !== 'function') {
+      throw new Error('Scene or WebGLSceneRenderer is not loaded globally.');
+    }
+    scene = new Scene();
+    renderer = new WebGLSceneRenderer('#glcanvas', { wireframe: false });
+    renderer.setScene(scene);
+    info('Renderer initialised with SVEC orbit camera, fit/reset controls, XZ grid, and orientation axis widget.');
+  } catch (err) {
+    setStatus('Renderer failed to initialise.', 'error');
+    error(`[Renderer] ${err?.message || err}`);
+    return;
+  }
+
+  if (exportSTLBtn) {
+    exportSTLBtn.addEventListener('click', () => {
+      try {
+        renderer.exportSTL('scene.stl');
+        info('Exported STL from current scene.');
+      } catch (err) {
+        error(`STL export failed: ${err?.message || err}`);
+      }
+    });
+  }
+
+  function ensureViewerButton(id, label, title = '') {
+    const toolbar = document.querySelector('.viewer-toolbar');
+    if (!toolbar) return null;
+    let btn = document.getElementById(id);
+    if (btn) return btn;
+    btn = document.createElement('button');
+    btn.id = id;
+    btn.className = 'btn ghost';
+    btn.textContent = label;
+    if (title) btn.title = title;
+    toolbar.appendChild(btn);
+    return btn;
+  }
+
+  const fitViewBtn = ensureViewerButton('fitViewBtn', '⌗ Fit View', 'Fit the current scene into view');
+  const resetViewBtn = ensureViewerButton('resetViewBtn', '↺ Reset View', 'Reset to the home camera direction');
+
+  fitViewBtn?.addEventListener('click', () => {
+    try {
+      renderer.fitScene?.(true);
+      info('Viewer fit to current scene bounds.');
+    } catch (err) {
+      error(`Fit view failed: ${err?.message || err}`);
+    }
+  });
+
+  resetViewBtn?.addEventListener('click', () => {
+    try {
+      renderer.resetView?.();
+      info('Viewer reset to the home camera direction.');
+    } catch (err) {
+      error(`Reset view failed: ${err?.message || err}`);
+    }
+  });
+
+  let wrapOn = false;
+  function updateWrapButton() {
+    if (!wrapBtn) return;
+    wrapBtn.textContent = wrapOn ? '⤶ Wrap: On' : '⤶ Wrap: Off';
+  }
+  function setWrap(on) {
+    wrapOn = !!on;
+    document.body.classList.toggle('wrap-on', wrapOn);
+    updateWrapButton();
+    if (hasSmartEditor() && typeof window.SmartEditor.setWrap === 'function') {
+      window.SmartEditor.setWrap(wrapOn);
+      return;
+    }
+    updateHighlight();
+  }
+  wrapBtn?.addEventListener('click', () => setWrap(!wrapOn));
+  updateWrapButton();
+
+  function nameHue(name) {
+    let h = 0;
+    for (let i = 0; i < name.length; i += 1) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+    return h % 360;
+  }
+  const ctxStyle = (name, alpha = 0.18) => `style="background:hsla(${nameHue(name)},70%,20%,${alpha});"`;
+  const esc = (value) => value.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  const TOK_RE = /(\bDSX\b|\bDSY\b|\bDSZ\b|\bDTX\b|\bDTY\b|\bDTZ\b|\bR\*?\b|\bA\b|\bS\b|\bT\b|\bDS\b|\bDT\b|\bI\b|->|\[|\]|\{|\}|\||\(|\)|-?\d+(?:\.\d+)?|[A-Za-z_]\w*|\s+|.)/g;
+
+  function collectSymbols(text) {
+    const varNames = new Set();
+    const ruleNames = new Set();
+    const reRange = /(^|\s)R\*?\s+([A-Za-z_]\w*)/g;
+    const reRule = /^([A-Za-z_]\w*)\s.*?->/gm;
+    let m;
+    while ((m = reRange.exec(text))) varNames.add(m[2]);
+    while ((m = reRule.exec(text))) ruleNames.add(m[1]);
+    return { varNames, ruleNames };
+  }
+
+  function highlightToHTML(text) {
+    const { varNames, ruleNames } = collectSymbols(text || '');
+    let html = '';
+    let m;
+    while ((m = TOK_RE.exec(text || ''))) {
+      const tok = m[0];
+      if (/^\s+$/.test(tok)) {
+        html += tok.replace(/ /g, '&nbsp;').replace(/\n/g, '<br>');
+      } else if (/^(R\*?|A|S|T|DS|DT|DSX|DSY|DSZ|DTX|DTY|DTZ|I)$/.test(tok)) {
+        html += `<span class="tok-kw">${tok}</span>`;
+      } else if (tok === '->' || tok === '|') {
+        html += `<span class="tok-op">${tok}</span>`;
+      } else if (tok === '(' || tok === ')') {
+        html += `<span class="tok-paren">${tok}</span>`;
+      } else if (tok === '[' || tok === ']' || tok === '{' || tok === '}') {
+        html += `<span class="tok-brack">${tok}</span>`;
+      } else if (/^-?\d+(?:\.\d+)?$/.test(tok)) {
+        html += `<span class="tok-num">${tok}</span>`;
+      } else if (/^[A-Za-z_]\w*$/.test(tok)) {
+        if (varNames.has(tok)) html += `<span class="ctx tok-var" ${ctxStyle(tok, 0.18)}>${tok}</span>`;
+        else if (ruleNames.has(tok)) html += `<span class="ctx tok-rule" ${ctxStyle(tok, 0.14)}>${tok}</span>`;
+        else html += esc(tok);
+      } else {
+        html += esc(tok);
+      }
+    }
+    return html;
+  }
+
+  let highlightRAF = null;
+  function updateHighlight() {
+    if (hasSmartEditor()) {
+      window.SmartEditor.refresh();
+      return;
+    }
+    if (highlightRAF) cancelAnimationFrame(highlightRAF);
+    highlightRAF = requestAnimationFrame(() => {
+      hl.innerHTML = highlightToHTML(src.value || '');
+      highlightRAF = null;
+    });
+  }
+
+  src.addEventListener('scroll', () => {
+    if (hasSmartEditor()) return;
+    hl.scrollTop = src.scrollTop;
+    hl.scrollLeft = src.scrollLeft;
+  });
+
+  refHead?.addEventListener('click', () => {
+    if (!refDock) return;
+    refDock.classList.toggle('min');
+    const open = !refDock.classList.contains('min');
+    if (refToggleLabel) refToggleLabel.textContent = open ? 'Hide ▲' : 'Show ▼';
+  });
+
+  let orbitOn = false;
+  let orbitHandle = null;
+  let orbitResumeTimer = null;
+  let orbitSuspendedForDrag = false;
+  const ORBIT_RESUME_DELAY_MS = 900;
+
+  function stopOrbitLoop() {
+    if (orbitHandle) {
+      cancelAnimationFrame(orbitHandle);
+      orbitHandle = null;
+    }
+  }
+
+  function clearOrbitResumeTimer() {
+    if (orbitResumeTimer) {
+      clearTimeout(orbitResumeTimer);
+      orbitResumeTimer = null;
+    }
+  }
+
+  function startOrbitLoop() {
+    if (!orbitOn || !renderer || orbitSuspendedForDrag || orbitHandle) return;
+    orbitHandle = requestAnimationFrame(orbitLoop);
+  }
+
+  function scheduleOrbitResume(delay = ORBIT_RESUME_DELAY_MS) {
+    clearOrbitResumeTimer();
+    if (!orbitOn) return;
+    orbitResumeTimer = setTimeout(() => {
+      orbitResumeTimer = null;
+      orbitSuspendedForDrag = false;
+      startOrbitLoop();
+    }, delay);
+  }
+
+  function orbitLoop() {
+    orbitHandle = null;
+    if (!orbitOn || !renderer || orbitSuspendedForDrag) return;
+    if (typeof renderer.stepAutoOrbitXZ === 'function') renderer.stepAutoOrbitXZ(0.0022);
+    else if (typeof renderer.stepAutoOrbit === 'function') renderer.stepAutoOrbit(0.0022);
+    else {
+      renderer.theta = (renderer.theta || 0) + 0.0022;
+      renderer.invalidate();
+    }
+    orbitHandle = requestAnimationFrame(orbitLoop);
+  }
+
+  const orbitCanvas = renderer?.canvas || document.getElementById('glcanvas');
+  orbitCanvas?.addEventListener('progen3d:viewdragstart', () => {
+    if (!orbitOn) return;
+    orbitSuspendedForDrag = true;
+    clearOrbitResumeTimer();
+    stopOrbitLoop();
+  });
+  orbitCanvas?.addEventListener('progen3d:viewdragend', () => {
+    if (!orbitOn) return;
+    scheduleOrbitResume();
+  });
+
+  orbitToggle?.addEventListener('click', () => {
+    orbitOn = !orbitOn;
+    orbitToggle.textContent = orbitOn ? '⏸ Auto Orbit' : '▶ Auto Orbit';
+    clearOrbitResumeTimer();
+    if (orbitOn) {
+      orbitSuspendedForDrag = false;
+      startOrbitLoop();
+    } else {
+      orbitSuspendedForDrag = false;
+      stopOrbitLoop();
+    }
+  });
+
+  let lastExecutedText = null;
+  function runGrammarPipeline(text, reason = 'manual') {
+    const trimmed = String(text || '').trim();
+    if (!trimmed) {
+      setStatus('Nothing to run.', 'ready');
+      setAutoRunState('Auto-run idle', 'idle');
+      warn('Nothing to run — the editor is empty.');
+      scene.clear?.();
+      renderer.setScene?.(scene);
+      renderer.invalidate?.();
+      return;
+    }
+
+    try {
+      setStatus(reason === 'auto' ? 'Auto-running grammar…' : 'Running grammar…', 'processing');
+      scene.clear?.();
+      if (typeof Grammar !== 'function') {
+        throw new Error('Grammar not available globally.');
+      }
+      const __pg3d_prepare = (function () {
+  // PG3D_PREPARE_NORMALIZER_PATCH: Do not use global `prepare` as a text normalizer.
+  // `prepare` is reserved for scene preparation (tokens, scene) in this runtime.
+  return function __pg3d_normalizeText(input) {
+    let s = String(input || '');
+    s = s.replace(/\r/g, '');
+    // Normalize common arrow variants.
+    s = s.replace(/–|→|⇒|⟶|⟾/g, '->');
+    return s.trim();
+  };
+})();
+        return s.replace(/
+?/g, '
+').replace(/^\uFEFF/, '').trim();
+      };
+
+      const g = new Grammar(__pg3d_prepare(trimmed));
+      info(`${reason === 'auto' ? 'Auto-run' : 'Manual run'}: tokenising ${g.tokens_new?.length ?? 'unknown'} tokens.`);
+      prepare(g.tokens_new, scene);
+      renderer.setScene?.(scene);
+      renderer.invalidate?.();
+      lastExecutedText = trimmed;
+      setStatus(`Done. Scene items: ${scene.getAll?.().length ?? 'n/a'}`, 'ready');
+      setAutoRunState(reason === 'auto' ? 'Auto-run complete' : 'Auto-run armed', reason === 'auto' ? 'running' : 'idle');
+      info(`Build complete. Scene items: ${scene.getAll?.().length ?? 'n/a'}`);
+    } catch (err) {
+      setStatus('Grammar error.', 'error');
+      setAutoRunState('Auto-run blocked by error', 'error');
+      error(`Grammar error: ${err?.message || err}`);
+    }
+  }
+
+  const AUTO_RUN_DELAY_MS = 4000;
+  let autoRunTimer = null;
+  let autoRunCountdown = null;
+  let autoRunDueAt = 0;
+
+  function clearAutoRunCountdown() {
+    if (autoRunCountdown) {
+      clearInterval(autoRunCountdown);
+      autoRunCountdown = null;
+    }
+  }
+
+  function cancelAutoRun(resetMessage = true) {
+    if (autoRunTimer) {
+      clearTimeout(autoRunTimer);
+      autoRunTimer = null;
+    }
+    autoRunDueAt = 0;
+    clearAutoRunCountdown();
+    if (resetMessage) setAutoRunState('Auto-run idle', 'idle');
+  }
+
+  function startAutoRunCountdown() {
+    clearAutoRunCountdown();
+    const tick = () => {
+      if (!autoRunDueAt) return;
+      const remaining = Math.max(0, autoRunDueAt - Date.now());
+      if (remaining <= 0) {
+        setAutoRunState('Auto-run executing…', 'running');
+        clearAutoRunCountdown();
+        return;
+      }
+      setAutoRunState(`Auto-run in ${(remaining / 1000).toFixed(1)}s`, 'waiting');
+    };
+    tick();
+    autoRunCountdown = setInterval(tick, 100);
+  }
+
+  function scheduleAutoRun() {
+    const current = String(src.value || '');
+    if (!current.trim()) {
+      cancelAutoRun(true);
+      return;
+    }
+    if (current.trim() === lastExecutedText) {
+      setAutoRunState('Auto-run idle', 'idle');
+      return;
+    }
+    if (autoRunTimer) clearTimeout(autoRunTimer);
+    autoRunDueAt = Date.now() + AUTO_RUN_DELAY_MS;
+    startAutoRunCountdown();
+    autoRunTimer = setTimeout(() => {
+      autoRunTimer = null;
+      clearAutoRunCountdown();
+      runGrammarPipeline(current, 'auto');
+    }, AUTO_RUN_DELAY_MS);
+  }
+
+  src.addEventListener('input', () => {
+    updateHighlight();
+    scheduleAutoRun();
+  });
+
+  goBtn.addEventListener('click', () => {
+    cancelAutoRun(false);
+    setAutoRunState('Auto-run idle', 'idle');
+    runGrammarPipeline(src.value || '', 'manual');
+  });
+
+  clrBtn.addEventListener('click', () => {
+    cancelAutoRun(true);
+    src.value = '';
+    updateHighlight();
+    scene.clear?.();
+    renderer.setScene?.(scene);
+    renderer.invalidate?.();
+    setStatus('Editor cleared.', 'ready');
+    info('Editor cleared and scene reset.');
+    src.focus();
+  });
+
+  const TUTORIAL_SNIPPETS = [
+    'X -> R len ( 0.15 0.3 ) ',
+    'R radius ( 0.75 1.75 ) ',
+    'R* count ( 21 63 ) ',
+    'A ( 90 0 ) ',
+    'S ( 1 1 10 ) [ Y ]\n\n',
+    'Y 19 len count radius -> A ( 19 2 ) [ YB ]\n',
+    'YB -> T ( -radius 0 0 ) | [ YB1 ] [ YB2 ]\n\n',
+    'YB1 -> S ( radius len 1 ) DS ( 1 0.03 1 ) I ( CubeX 2 0 1 )\n',
+    'YB2 -> A ( 180 0 ) S ( radius len 1 ) DS ( 1 0.03 1 ) I ( CubeX 2 0 1 )'
+  ];
+
+  function initTutorial() {
+    const overlay = document.getElementById('tut');
+    if (!overlay) {
+      info('[Tutorial] Overlay UI not present; loading demo grammar into editor.');
+      src.value = TUTORIAL_SNIPPETS.join('');
+      updateHighlight();
+      scheduleAutoRun();
+    }
+  }
+
+  function addTutorialBtn() {
+    const bar = document.getElementById('toolbar');
+    if (!bar || document.getElementById('tutorialBtn')) return;
+    const btn = document.createElement('button');
+    btn.id = 'tutorialBtn';
+    btn.className = 'btn secondary';
+    btn.textContent = '▶ Start Tutorial';
+    btn.addEventListener('click', initTutorial);
+    bar.appendChild(btn);
+  }
+
+  addTutorialBtn();
+  updateHighlight();
+  setStatus('Ready. Edit grammar to trigger auto-run after 4 seconds.', 'ready');
+  setAutoRunState('Auto-run idle', 'idle');
+  runGrammarPipeline(src.value || '', 'manual');
+})();

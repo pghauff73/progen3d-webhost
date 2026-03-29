@@ -1,0 +1,1957 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Grammar Designer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#07111d;
+      --bg-2:#0d1a2a;
+      --panel:#111e30;
+      --panel-2:#0f1826;
+      --line:rgba(157,181,214,0.18);
+      --text:#edf4ff;
+      --muted:#8fa4c3;
+      --accent:#6fd0a6;
+      --accent-2:#5aa0ff;
+      --warn:#ffcb72;
+      --error:#ff7f8c;
+      --shadow:0 26px 60px rgba(0,0,0,0.34);
+      --editor-line-height:1.55;
+      --editor-font-size:14px;
+      --editor-gutter-width:58px;
+      --editor-top-pad:14px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family:"Inter",system-ui,sans-serif;
+      color:var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(90,160,255,0.18), transparent 28%),
+        radial-gradient(circle at top right, rgba(111,208,166,0.12), transparent 22%),
+        linear-gradient(180deg, #0a1420 0%, #050b13 100%);
+    }
+    .page{
+      min-height:100%;
+      display:grid;
+      grid-template-rows:auto 1fr;
+      gap:18px;
+      padding:18px;
+    }
+    .hero,
+    .panel{
+      border:1px solid var(--line);
+      background:linear-gradient(180deg, rgba(18,31,50,0.96), rgba(10,18,30,0.96));
+      box-shadow:var(--shadow);
+      border-radius:22px;
+    }
+    .hero{
+      padding:22px 24px;
+      display:grid;
+      grid-template-columns:minmax(280px, 1.6fr) minmax(360px, 2fr);
+      gap:18px;
+      align-items:start;
+    }
+    .hero h1{
+      margin:8px 0 10px;
+      font:800 2rem/1 "Space Grotesk", sans-serif;
+      letter-spacing:-0.04em;
+    }
+    .eyebrow{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      color:var(--accent);
+      text-transform:uppercase;
+      font-size:12px;
+      letter-spacing:0.18em;
+    }
+    .intro{
+      margin:0;
+      color:var(--muted);
+      line-height:1.55;
+      max-width:62ch;
+    }
+    .controls{
+      display:grid;
+      grid-template-columns:repeat(4, minmax(120px, 1fr));
+      gap:12px;
+    }
+    .field,
+    .actions{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+    }
+    .field label{
+      font-size:12px;
+      color:var(--muted);
+      text-transform:uppercase;
+      letter-spacing:0.08em;
+    }
+    .field input,
+    .field select,
+    .editor textarea{
+      width:100%;
+      border-radius:14px;
+      border:1px solid rgba(157,181,214,0.2);
+      background:rgba(4,10,18,0.66);
+      color:var(--text);
+      padding:12px 14px;
+      font:500 14px/1.3 "Inter", system-ui, sans-serif;
+      outline:none;
+    }
+    .field input:focus,
+    .field select:focus,
+    .editor textarea:focus{
+      border-color:rgba(95,159,255,0.62);
+      box-shadow:0 0 0 3px rgba(90,160,255,0.18);
+    }
+    .field-note{
+      margin:0;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.45;
+    }
+    .program-profile{
+      margin-top:8px;
+      padding:10px 12px;
+      border-radius:14px;
+      border:1px solid rgba(157,181,214,0.16);
+      background:rgba(4,10,18,0.52);
+      display:grid;
+      gap:4px;
+    }
+    .program-profile strong{
+      color:var(--text);
+      font-size:12px;
+      letter-spacing:0.06em;
+      text-transform:uppercase;
+    }
+    .program-profile span{
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.45;
+    }
+    .actions{
+      justify-content:flex-end;
+      align-self:end;
+    }
+    .actions-row{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+    }
+    .btn{
+      appearance:none;
+      border:0;
+      border-radius:999px;
+      padding:12px 16px;
+      font:700 13px/1 "Inter", system-ui, sans-serif;
+      letter-spacing:0.02em;
+      cursor:pointer;
+      color:#04111f;
+      background:linear-gradient(135deg, var(--accent), #9ef5cb);
+    }
+    .btn.secondary{
+      color:var(--text);
+      background:linear-gradient(135deg, #214063, #15273e);
+      border:1px solid rgba(157,181,214,0.18);
+    }
+    .status-strip{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-top:14px;
+    }
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:8px 12px;
+      border-radius:999px;
+      border:1px solid rgba(157,181,214,0.18);
+      background:rgba(6,12,21,0.58);
+      color:var(--muted);
+      font-size:12px;
+    }
+    .pill strong{color:var(--text)}
+    .main{
+      display:grid;
+      grid-template-columns:minmax(340px, 1.05fr) minmax(360px, 1fr);
+      gap:18px;
+      min-height:0;
+    }
+    .column{
+      display:grid;
+      gap:18px;
+      min-height:0;
+    }
+    .panel-header{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:12px;
+      padding:18px 20px 0;
+    }
+    .viewer-actions{
+      display:flex;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+      gap:10px;
+    }
+    .panel-header h2{
+      margin:0;
+      font:700 1rem/1.1 "Space Grotesk", sans-serif;
+      letter-spacing:0.01em;
+    }
+    .panel-subtitle{
+      margin:6px 0 0;
+      color:var(--muted);
+      font-size:13px;
+      line-height:1.45;
+    }
+    .editor,
+    .viewer-wrap,
+    .console-wrap{
+      padding:16px 20px 20px;
+      min-height:0;
+    }
+    .editor-shell{
+      position:relative;
+      border-radius:18px;
+      overflow:hidden;
+      border:1px solid rgba(157,181,214,0.16);
+      background:rgba(4,10,18,0.74);
+      min-height:420px;
+    }
+    .editor-gutter{
+      position:absolute;
+      inset:0 auto 0 0;
+      width:var(--editor-gutter-width);
+      padding:var(--editor-top-pad) 8px var(--editor-top-pad) 12px;
+      border-right:1px solid rgba(157,181,214,0.12);
+      background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015));
+      color:#6d88ad;
+      font:500 var(--editor-font-size)/var(--editor-line-height) "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      text-align:right;
+      overflow:hidden;
+      pointer-events:none;
+      user-select:none;
+    }
+    .editor-gutter-lines{
+      white-space:pre;
+    }
+    .editor textarea{
+      display:block;
+      min-height:420px;
+      resize:vertical;
+      border:0;
+      border-radius:0;
+      background:transparent;
+      padding:var(--editor-top-pad) 16px var(--editor-top-pad) calc(var(--editor-gutter-width) + 16px);
+      font:500 var(--editor-font-size)/var(--editor-line-height) "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      white-space:pre;
+      tab-size:2;
+      box-shadow:none;
+    }
+    .editor-actions{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      margin-bottom:12px;
+    }
+    .meta{
+      color:var(--muted);
+      font-size:12px;
+    }
+    .viewer-wrap{
+      display:grid;
+      grid-template-rows:1fr;
+      min-height:420px;
+    }
+    .results-wrap{
+      padding:16px 20px 20px;
+    }
+    .results-grid{
+      display:grid;
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+      gap:12px;
+      margin-bottom:12px;
+    }
+    .result-card{
+      border:1px solid rgba(157,181,214,0.16);
+      background:rgba(4,10,18,0.74);
+      border-radius:16px;
+      padding:12px 14px;
+    }
+    .result-label{
+      color:var(--muted);
+      font-size:11px;
+      letter-spacing:0.08em;
+      text-transform:uppercase;
+      margin-bottom:6px;
+    }
+    .result-value{
+      color:var(--text);
+      font:700 15px/1.3 "Space Grotesk", sans-serif;
+    }
+    .result-meta{
+      margin-top:4px;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.45;
+    }
+    .results-list{
+      border:1px solid rgba(157,181,214,0.16);
+      background:rgba(4,10,18,0.74);
+      border-radius:16px;
+      padding:10px 12px;
+      display:grid;
+      gap:8px;
+    }
+    .research-wrap{
+      padding:16px 20px 20px;
+      display:grid;
+      gap:14px;
+    }
+    .research-grid{
+      display:grid;
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+      gap:12px;
+    }
+    .research-card{
+      border:1px solid rgba(157,181,214,0.16);
+      background:rgba(4,10,18,0.74);
+      border-radius:16px;
+      padding:14px 16px;
+    }
+    .research-card h3{
+      margin:0 0 8px;
+      font:700 14px/1.2 "Space Grotesk", sans-serif;
+      letter-spacing:0.01em;
+    }
+    .research-card p{
+      margin:0;
+      color:var(--muted);
+      font-size:13px;
+      line-height:1.5;
+    }
+    .research-list{
+      border:1px solid rgba(157,181,214,0.16);
+      background:rgba(4,10,18,0.74);
+      border-radius:16px;
+      padding:12px 14px;
+      display:grid;
+      gap:10px;
+    }
+    .research-row{
+      display:grid;
+      grid-template-columns:170px 1fr;
+      gap:12px;
+      align-items:start;
+      font-size:13px;
+      line-height:1.5;
+    }
+    .research-row strong{
+      color:var(--text);
+      letter-spacing:0.02em;
+      text-transform:uppercase;
+      font-size:11px;
+    }
+    .research-row span{
+      color:var(--muted);
+    }
+    .research-sources{
+      margin:0;
+      padding-left:18px;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.55;
+    }
+    .research-sources a{
+      color:#a8ccff;
+    }
+    .results-row{
+      display:grid;
+      grid-template-columns:120px 1fr;
+      gap:10px;
+      align-items:start;
+      font-size:12px;
+      line-height:1.45;
+    }
+    .results-row-label{
+      color:var(--muted);
+      text-transform:uppercase;
+      letter-spacing:0.06em;
+    }
+    .results-row-value{
+      color:var(--text);
+      word-break:break-word;
+    }
+    .canvas-shell{
+      position:relative;
+      border-radius:18px;
+      overflow:hidden;
+      border:1px solid rgba(157,181,214,0.16);
+      background:linear-gradient(180deg, #07111c, #04080f);
+      min-height:420px;
+    }
+    #glcanvas{
+      display:block;
+      width:100%;
+      height:100%;
+      min-height:420px;
+    }
+    .console-wrap{
+      min-height:240px;
+    }
+    .console{
+      min-height:240px;
+      max-height:340px;
+      overflow:auto;
+      border-radius:18px;
+      border:1px solid rgba(157,181,214,0.16);
+      background:rgba(4,10,18,0.74);
+      padding:14px 16px;
+      font:500 13px/1.5 "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+    .console-line{display:flex; gap:10px; margin-bottom:6px; color:#d9e8ff}
+    .console-time{color:#6d88ad; flex:0 0 auto}
+    .console-info .console-msg{color:#dbe8ff}
+    .console-warn .console-msg{color:var(--warn)}
+    .console-error .console-msg{color:var(--error)}
+    .ghost-results{
+      display:none;
+    }
+    @media (max-width: 1120px){
+      .hero{grid-template-columns:1fr}
+      .controls{grid-template-columns:repeat(2, minmax(120px, 1fr))}
+      .main{grid-template-columns:1fr}
+    }
+    @media (max-width: 720px){
+      .page{padding:12px}
+      .controls{grid-template-columns:1fr}
+      .actions-row{flex-direction:column}
+      .btn{width:100%}
+      .results-grid{grid-template-columns:1fr}
+      .results-row{grid-template-columns:1fr}
+      .research-grid{grid-template-columns:1fr}
+      .research-row{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div>
+        <span class="eyebrow">Procedural Grammar Designer</span>
+        <h1>Single grammar generator and live scene preview</h1>
+        <p class="intro">This page reuses the site grammar-writer generation method, generates one parser-checked grammar, places it into an editable source pane, and renders the resulting structure directly into the viewer. The active grammar surface also supports <code>rand(min max)</code>, <code>rand(var)</code>, <code>float(expr)</code>, <code>int(expr)</code>, and shorthand rerolls like <code>R height</code>.</p>
+        <div class="status-strip">
+          <span class="pill"><strong id="designerStatus">Ready</strong></span>
+          <span class="pill">Title <strong id="designerTitle">Pending</strong></span>
+          <span class="pill">Primary <strong id="designerPrimary">-</strong></span>
+          <span class="pill">Secondary <strong id="designerSecondary">-</strong></span>
+          <span class="pill">Cubes <strong id="designerCubes">-</strong></span>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="field">
+          <label for="writerSeed">Seed</label>
+          <input id="writerSeed" type="number" step="1" placeholder="Random seed">
+        </div>
+        <div class="field">
+          <label for="designerGeneratorMode">Generator</label>
+          <select id="designerGeneratorMode">
+            <option value="motif" selected>Motif</option>
+            <option value="building">Building</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="designerBuildingType">Building type</label>
+          <select id="designerBuildingType">
+            <option value="random" selected>Random</option>
+            <option value="tower">Tower</option>
+            <option value="stepped">Stepped tower</option>
+            <option value="slab">Slab block</option>
+            <option value="bridge">Skybridge</option>
+            <option value="courtyard">Courtyard</option>
+            <option value="frame">Frame atrium</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="designerBuildingExample">Building example</label>
+          <select id="designerBuildingExample">
+            <option value="" selected>None</option>
+            <option value="tower_a">Tower seed A</option>
+            <option value="stepped_a">Stepped seed A</option>
+            <option value="slab_a">Slab seed A</option>
+            <option value="bridge_a">Skybridge seed A</option>
+            <option value="courtyard_a">Courtyard seed A</option>
+            <option value="frame_a">Frame seed A</option>
+          </select>
+        </div>
+        <div class="field" data-building-only hidden>
+          <label for="designerBuildingWidth">Building width</label>
+          <input id="designerBuildingWidth" type="number" min="0.1" step="0.1" placeholder="Auto">
+        </div>
+        <div class="field" data-building-only hidden>
+          <label for="designerBuildingDepth">Building depth</label>
+          <input id="designerBuildingDepth" type="number" min="0.1" step="0.1" placeholder="Auto">
+        </div>
+        <div class="field" data-building-only hidden>
+          <label for="designerBuildingProgram">Building use</label>
+          <select id="designerBuildingProgram">
+            <option value="" selected>Auto</option>
+            <option value="office">Office</option>
+            <option value="residential">Residential</option>
+            <option value="civic">Civic</option>
+          </select>
+          <div id="designerProgramProfile" class="program-profile" aria-live="polite">
+            <strong>Auto</strong>
+            <span>Lets the generator pick a program and matching defaults for floor height, podium weight, and facade language.</span>
+          </div>
+        </div>
+        <div class="field" data-building-only hidden>
+          <label for="designerBuildingFloors">Floors</label>
+          <input id="designerBuildingFloors" type="number" min="1" step="1" placeholder="Auto">
+        </div>
+        <div class="field" data-building-only hidden>
+          <label for="designerBuildingFloorHeight">Floor height</label>
+          <input id="designerBuildingFloorHeight" type="number" min="0.1" step="0.05" placeholder="Auto">
+        </div>
+        <div class="field" data-building-only hidden>
+          <label for="designerBuildingHeight">Overall height</label>
+          <input id="designerBuildingHeight" type="number" min="0.1" step="0.1" placeholder="Type-specific">
+        </div>
+        <div class="field" data-building-only hidden>
+          <label for="designerBuildingSpan">Bridge span</label>
+          <input id="designerBuildingSpan" type="number" min="0.1" step="0.1" placeholder="Bridge only">
+        </div>
+        <div class="field" data-building-only hidden>
+          <label for="designerBuildingFrameThickness">Frame / wall thickness</label>
+          <input id="designerBuildingFrameThickness" type="number" min="0.05" step="0.05" placeholder="Auto">
+        </div>
+        <div class="field" data-building-only hidden>
+          <label for="designerBuildingShell">Shell material</label>
+          <select id="designerBuildingShell">
+            <option value="" selected>Auto</option>
+            <option value="grayStone">grayStone</option>
+            <option value="darkBasalt">darkBasalt</option>
+            <option value="whiteTiles">whiteTiles</option>
+            <option value="brushedAluminum">brushedAluminum</option>
+            <option value="chromeSurface">chromeSurface</option>
+          </select>
+        </div>
+        <div class="field" data-building-only hidden>
+          <label for="designerBuildingAccent">Accent material</label>
+          <select id="designerBuildingAccent">
+            <option value="" selected>Auto</option>
+            <option value="frostedGlass">frostedGlass</option>
+            <option value="glowingPanel">glowingPanel</option>
+            <option value="blueCeramicTile">blueCeramicTile</option>
+            <option value="whiteTiles">whiteTiles</option>
+            <option value="chromeSurface">chromeSurface</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="writerDepth">Depth</label>
+          <select id="writerDepth">
+            <option value="random" selected>Random</option>
+            <option value="4">4 levels</option>
+            <option value="5">5 levels</option>
+            <option value="6">6 levels</option>
+            <option value="7">7 levels</option>
+            <option value="8">8 levels</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="writerMotif">Motif type</label>
+          <select id="writerMotif">
+            <option value="random" selected>Random</option>
+            <option value="Stack">Stack</option>
+            <option value="Ring">Ring</option>
+            <option value="Spokes">Spokes</option>
+            <option value="Band">Band</option>
+            <option value="Grid">Grid</option>
+            <option value="RingStack">RingStack</option>
+            <option value="Spiral">Spiral</option>
+            <option value="Fork">Fork</option>
+            <option value="RadialGrid">RadialGrid</option>
+            <option value="Ribbon">Ribbon</option>
+            <option value="TerracedStack">TerracedStack</option>
+            <option value="FacadeBandGrid">FacadeBandGrid</option>
+            <option value="VaultedRingGrid">VaultedRingGrid</option>
+            <option value="RadialCanopy">RadialCanopy</option>
+            <option value="RecursiveRing">RecursiveRing</option>
+            <option value="Dihedral">Dihedral</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="writerOverlap">Cube join</label>
+          <select id="writerOverlap">
+            <option value="loose">Loose</option>
+            <option value="joined" selected>Joined</option>
+            <option value="fused">Fused</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="writerJoinStrategy">Join strategy</label>
+          <select id="writerJoinStrategy">
+            <option value="socket" selected>Socket core</option>
+            <option value="collar">Collar band</option>
+            <option value="spine">Spine strut</option>
+            <option value="hybrid">Hybrid join</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="writerSymmetry">Symmetry</label>
+          <select id="writerSymmetry">
+            <option value="balanced" selected>Balanced</option>
+            <option value="radial">Radial</option>
+            <option value="bilateral">Bilateral</option>
+            <option value="asymmetric">Asymmetric</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="writerDensity">Motif density</label>
+          <select id="writerDensity">
+            <option value="sparse">Sparse</option>
+            <option value="medium" selected>Medium</option>
+            <option value="dense">Dense</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="designerDsMode">Shared DS</label>
+          <select id="designerDsMode">
+            <option value="" selected>None</option>
+            <option value="DSX">DSX</option>
+            <option value="DSY">DSY</option>
+            <option value="DSZ">DSZ</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="designerDtMode">Shared DT</label>
+          <select id="designerDtMode">
+            <option value="" selected>None</option>
+            <option value="DTX">DTX</option>
+            <option value="DTY">DTY</option>
+            <option value="DTZ">DTZ</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="designerDsValues">DS values</label>
+          <input id="designerDsValues" type="text" value="1 1 1" placeholder="1 1 1">
+        </div>
+        <div class="field">
+          <label for="designerDtValues">DT values</label>
+          <input id="designerDtValues" type="text" value="0 0 0" placeholder="0 0 0">
+        </div>
+        <div class="actions">
+          <label>Actions</label>
+          <div class="actions-row">
+            <button id="writerGenerateBtn" class="btn" type="button">Generate Grammar</button>
+            <button id="writerRandomSeedBtn" class="btn secondary" type="button">Random Seed</button>
+          </div>
+        </div>
+        <div class="actions">
+          <label>Editor</label>
+          <div class="actions-row">
+            <button id="designerRenderBtn" class="btn secondary" type="button">Render Current Editor</button>
+          </div>
+        </div>
+        <input id="writerCount" type="hidden" value="1">
+      </div>
+    </section>
+
+    <section class="main">
+      <div class="column">
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Editor</h2>
+              <p class="panel-subtitle">The generated grammar is copied here automatically. You can edit it and render again without regenerating, including using <code>R name</code>, <code>rand(var)</code>, <code>rand(min max)</code>, <code>float()</code>, and <code>int()</code> inside expressions.</p>
+            </div>
+          </div>
+          <div class="editor">
+            <div class="editor-actions">
+              <div class="meta" id="designerMeta">Waiting for generated grammar. Runtime helpers: rand(min max), rand(var), float(expr), int(expr), and R var rerolls.</div>
+            </div>
+            <div class="editor-shell">
+              <div class="editor-gutter" aria-hidden="true"><div id="designerLineNumbers" class="editor-gutter-lines">1</div></div>
+              <textarea id="designerSource" spellcheck="false" wrap="off" aria-label="Grammar editor"></textarea>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="column">
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Viewer</h2>
+              <p class="panel-subtitle">Rendered with the same grammar runtime, SVEC orbit camera, fit/reset framing, and scene renderer used by the editor.</p>
+            </div>
+            <div class="viewer-actions" aria-label="Viewer controls">
+              <button id="designerFitViewBtn" class="btn secondary" type="button">Fit View</button>
+              <button id="designerResetViewBtn" class="btn secondary" type="button">Reset View</button>
+              <button id="designerOrbitToggleBtn" class="btn secondary" type="button">Auto Orbit: Off</button>
+            </div>
+          </div>
+          <div class="viewer-wrap">
+            <div class="canvas-shell">
+              <canvas id="glcanvas" aria-label="Grammar scene viewer"></canvas>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Results</h2>
+              <p class="panel-subtitle">Structured generation, parse, scene, and join metrics for the current designer run.</p>
+            </div>
+          </div>
+          <div class="results-wrap">
+            <div id="designerResultsGrid" class="results-grid"></div>
+            <div id="designerResultsDetails" class="results-list"></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Building Research</h2>
+              <p class="panel-subtitle">Compact architectural heuristics for generating more believable towers, slabs, courtyards, bridges, and stepped forms.</p>
+            </div>
+          </div>
+          <div class="research-wrap">
+            <div class="research-grid">
+              <article class="research-card">
+                <h3>Base, middle, top</h3>
+                <p>For buildings above two storeys, organize the mass as a base, a repetitive middle, and a top. In generator terms, that usually means a wider podium or plinth, a calmer shaft, and a cap, setback, or crown that finishes the silhouette.</p>
+              </article>
+              <article class="research-card">
+                <h3>Upper-floor reduction</h3>
+                <p>Use setbacks or slightly smaller upper plates to avoid monolithic slabs. Upper-floor reduction is especially useful for stepped towers, courtyard edges, and frame buildings that need a clearer skyline profile.</p>
+              </article>
+              <article class="research-card">
+                <h3>Typical floor-to-floor height</h3>
+                <p>Office-style floors commonly sit around 3.6 to 4.2 m, while residential-style floors are lower. Use that as a starting range for stacked floors, then reserve taller values for podiums, lobbies, and bridge decks.</p>
+              </article>
+              <article class="research-card">
+                <h3>Skybridge caution</h3>
+                <p>Skybridges can visually and aerodynamically tie twin masses together, but the bridge itself becomes more exposed as it climbs. Mid-height links are a safer default than putting every bridge at the roof.</p>
+              </article>
+            </div>
+
+            <div class="research-list">
+              <div class="research-row">
+                <strong>Tower</strong>
+                <span>Use a compact footprint, a repeated shaft, and one or two silhouette changes near the top. A wider podium helps the tower read as grounded instead of needle-thin at grade.</span>
+              </div>
+              <div class="research-row">
+                <strong>Stepped</strong>
+                <span>Reduce floor plate area as height increases. Stepbacks read better when they happen in a few deliberate bands instead of at every floor, and they pair well with crowns or terrace-like transitions.</span>
+              </div>
+              <div class="research-row">
+                <strong>Slab</strong>
+                <span>Break long facades into bays, panel rhythms, or visible cores. A long bar mass benefits from a strong base and roof line so it does not read like a single extruded box.</span>
+              </div>
+              <div class="research-row">
+                <strong>Courtyard</strong>
+                <span>Keep the central void large enough to register as an intentional outdoor room. The perimeter should feel structural, but the courtyard cannot collapse into a narrow slot.</span>
+              </div>
+              <div class="research-row">
+                <strong>Bridge</strong>
+                <span>Let bridge spans read as connectors between stable masses, not as the main support system. Similar datum lines on both anchor towers make the bridge feel intentional and believable.</span>
+              </div>
+              <div class="research-row">
+                <strong>Frame atrium</strong>
+                <span>Make the outer frame legible with stronger corners or edge members, then keep the atrium void simple. Too many nested cuts weaken the reading of the primary frame.</span>
+              </div>
+            </div>
+
+            <ul class="research-sources">
+              <li>SteelConstruction.info, <a href="https://www.steelconstruction.info/Engineering_students%27_guide_to_multi-storey_buildings" target="_blank" rel="noreferrer">Engineering students' guide to multi-storey buildings</a>: concept-stage floor-to-floor ranges for office buildings.</li>
+              <li>City of Oakland, <a href="https://online.flippingbook.com/view/643923828/" target="_blank" rel="noreferrer">Objective Design Standards Manual</a> (November 2024): base-middle-top hierarchy and upper-floor reduction guidance.</li>
+              <li>Journal of Wind Engineering and Industrial Aerodynamics, <a href="https://www.sciencedirect.com/science/article/abs/pii/S0167610525002922" target="_blank" rel="noreferrer">wind-tunnel study of twin towers with skybridges</a> (February 2026): skybridge height affects bridge loads and overall aerodynamic response.</li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Console</h2>
+              <p class="panel-subtitle">Parser feedback, generation notes, and render diagnostics.</p>
+            </div>
+          </div>
+          <div class="console-wrap">
+            <div id="designerConsole" class="console" aria-live="polite"></div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section id="writerResults" class="ghost-results" aria-hidden="true"></section>
+  </main>
+
+  <script src="../editor/js/core/helpers.js?v=20260314-designer"></script>
+  <script src="../editor/js/core/renderer.js?v=20260314-designer"></script>
+  <script src="../editor/js/core/scene.js?v=20260314-designer"></script>
+  <script src="../editor/js/core/scope-context.js?v=20260314-designer"></script>
+  <script src="../editor/js/core/variables.js?v=20260314-designer"></script>
+  <script src="../editor/js/core/substitution.js?v=20260314-designer"></script>
+  <script src="../editor/js/core/math-eval.js?v=20260314-designer"></script>
+  <script src="../editor/js/core/lexer-token.js?v=20260314-designer"></script>
+  <script src="../editor/js/core/grammar.js?v=20260315-reroll-shorthand"></script>
+  <script src="building-generator.js?v=20260315-building-module"></script>
+  <script src="../grammar-writer.js?v=20260314-designer"></script>
+  <script>
+    (function () {
+      "use strict";
+
+      const sourceInput = document.getElementById("designerSource");
+      const lineNumbers = document.getElementById("designerLineNumbers");
+      const renderButton = document.getElementById("designerRenderBtn");
+      const consoleOutput = document.getElementById("designerConsole");
+      const resultsGrid = document.getElementById("designerResultsGrid");
+      const resultsDetails = document.getElementById("designerResultsDetails");
+      const metaOutput = document.getElementById("designerMeta");
+      const statusOutput = document.getElementById("designerStatus");
+      const titleOutput = document.getElementById("designerTitle");
+      const primaryOutput = document.getElementById("designerPrimary");
+      const secondaryOutput = document.getElementById("designerSecondary");
+      const cubesOutput = document.getElementById("designerCubes");
+      const fitViewButton = document.getElementById("designerFitViewBtn");
+      const resetViewButton = document.getElementById("designerResetViewBtn");
+      const orbitToggleButton = document.getElementById("designerOrbitToggleBtn");
+      const seedInput = document.getElementById("writerSeed");
+      const generateButton = document.getElementById("writerGenerateBtn");
+      const randomSeedButton = document.getElementById("writerRandomSeedBtn");
+      const generatorModeInput = document.getElementById("designerGeneratorMode");
+      const buildingTypeInput = document.getElementById("designerBuildingType");
+      const buildingExampleInput = document.getElementById("designerBuildingExample");
+      const buildingWidthInput = document.getElementById("designerBuildingWidth");
+      const buildingDepthInput = document.getElementById("designerBuildingDepth");
+      const buildingProgramInput = document.getElementById("designerBuildingProgram");
+      const programProfileOutput = document.getElementById("designerProgramProfile");
+      const buildingFloorsInput = document.getElementById("designerBuildingFloors");
+      const buildingFloorHeightInput = document.getElementById("designerBuildingFloorHeight");
+      const buildingHeightInput = document.getElementById("designerBuildingHeight");
+      const buildingSpanInput = document.getElementById("designerBuildingSpan");
+      const buildingFrameThicknessInput = document.getElementById("designerBuildingFrameThickness");
+      const buildingShellInput = document.getElementById("designerBuildingShell");
+      const buildingAccentInput = document.getElementById("designerBuildingAccent");
+      const buildingOnlyFields = Array.prototype.slice.call(document.querySelectorAll("[data-building-only]"));
+      const dsModeInput = document.getElementById("designerDsMode");
+      const dtModeInput = document.getElementById("designerDtMode");
+      const dsValuesInput = document.getElementById("designerDsValues");
+      const dtValuesInput = document.getElementById("designerDtValues");
+      const MAX_BUILDING_RETRIES = 5;
+      const PROGRAM_PROFILES = {
+        auto: {
+          label: "Auto",
+          text: "Lets the generator pick a program and matching defaults for floor height, podium weight, and facade language."
+        },
+        office: {
+          label: "Office",
+          text: "Mid-height floor defaults, clearer glass-band rhythm, and balanced podium/crown treatment for regular commercial blocks."
+        },
+        residential: {
+          label: "Residential",
+          text: "Lower floor defaults, calmer facade banding, and lighter crowns for repetitive apartment-style massing."
+        },
+        civic: {
+          label: "Civic",
+          text: "Taller floor defaults, heavier podiums, stronger facade articulation, and more pronounced crown treatment."
+        }
+      };
+      const BUILDING_EXAMPLES = {
+        tower_a: { type: "tower", seed: 1874639201 },
+        stepped_a: { type: "stepped", seed: 941205337 },
+        slab_a: { type: "slab", seed: 2541186003 },
+        bridge_a: { type: "bridge", seed: 318770145 },
+        courtyard_a: { type: "courtyard", seed: 4019921777 },
+        frame_a: { type: "frame", seed: 1264835549 }
+      };
+      let designerResult = null;
+      let currentRenderSeed = Number(seedInput && seedInput.value ? seedInput.value : Date.now()) >>> 0;
+      let orbitOn = false;
+      let orbitHandle = null;
+      let orbitResumeTimer = null;
+      let orbitSuspendedForDrag = false;
+      const ORBIT_RESUME_DELAY_MS = 900;
+
+      function updateLineNumbers() {
+        const text = sourceInput.value || "";
+        const lineCount = Math.max(1, text.split("\n").length);
+        const lines = [];
+        for (let i = 1; i <= lineCount; i += 1) lines.push(String(i));
+        lineNumbers.textContent = lines.join("\n");
+        syncGutterScroll();
+      }
+
+      function updateProgramProfile() {
+        if (!programProfileOutput) return;
+        const key = buildingProgramInput && buildingProgramInput.value ? buildingProgramInput.value : "auto";
+        const profile = PROGRAM_PROFILES[key] || PROGRAM_PROFILES.auto;
+        programProfileOutput.innerHTML = "";
+        const title = document.createElement("strong");
+        title.textContent = profile.label;
+        const text = document.createElement("span");
+        text.textContent = profile.text;
+        programProfileOutput.appendChild(title);
+        programProfileOutput.appendChild(text);
+      }
+
+      function syncGutterScroll() {
+        lineNumbers.style.transform = "translateY(" + (-sourceInput.scrollTop) + "px)";
+      }
+
+      function logLine(kind, text) {
+        pushResultLog(kind, text);
+        const line = document.createElement("div");
+        line.className = "console-line console-" + kind;
+
+        const time = document.createElement("span");
+        time.className = "console-time";
+        time.textContent = "[" + new Date().toLocaleTimeString() + "]";
+
+        const msg = document.createElement("span");
+        msg.className = "console-msg";
+        msg.textContent = String(text);
+
+        line.appendChild(time);
+        line.appendChild(msg);
+        consoleOutput.appendChild(line);
+        consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        renderStructuredResults();
+      }
+
+      window.PG3DConsole = window.PG3DConsole || {};
+      window.PG3DConsole.renderLine = function (kind, message) {
+        const safeKind = kind === "warn" || kind === "error" || kind === "debug" ? kind : "info";
+        if (safeKind === "debug") return;
+        logLine(safeKind, message);
+      };
+      window.PG3D_LOG = function (kind, message) {
+        window.PG3DConsole.renderLine(kind, message);
+      };
+
+      let scene;
+      let renderer;
+      try {
+        scene = new Scene();
+        renderer = new WebGLSceneRenderer("#glcanvas", { wireframe: false });
+        renderer.updateSVECOrbitFromDrag = function (dx, dy) {
+          const currentDir = this.normalizeSafe3(this.svec || this.viewDir || this.localToWorld(this.SVEC), [0, 0, 1]);
+          const currentTheta = Math.atan2(currentDir[2], currentDir[0]);
+          const currentPhi = Math.acos(this.clamp(currentDir[1], -1, 1));
+          const nextTheta = currentTheta - (dx * this.dragScale);
+          const nextPhi = this.clamp(currentPhi - (dy * this.dragScale), 0.12, Math.PI - 0.12);
+          const planar = Math.sin(nextPhi);
+          const dir = this.normalizeSafe3([
+            planar * Math.cos(nextTheta),
+            Math.cos(nextPhi),
+            planar * Math.sin(nextTheta)
+          ], [0, 0, 1]);
+          this.X = [1, 0, 0];
+          this.Y = [0, 1, 0];
+          this.Z = [0, 0, 1];
+          this.SVEC = dir;
+          this.hasUserView = true;
+          this.updateViewCamera();
+          this.invalidate();
+        };
+        renderer.setScene(scene);
+        logLine("info", "Viewer initialized.");
+        logLine("info", "Viewer drag set to yaw on mouse X and tilt on mouse Y.");
+        logLine("info", "SVEC viewer controls enabled: fit, reset, and auto orbit.");
+        logLine("info", "Grammar runtime " + (window.PG3D_GRAMMAR_VERSION || "unknown") + " loaded.");
+      } catch (error) {
+        logLine("error", "Viewer initialization failed: " + (error && error.message ? error.message : error));
+        throw error;
+      }
+
+      function setOrbitButtonLabel() {
+        if (!orbitToggleButton) return;
+        orbitToggleButton.textContent = "Auto Orbit: " + (orbitOn ? "On" : "Off");
+        orbitToggleButton.title = orbitOn ? "Pause slow auto orbit" : "Start slow auto orbit";
+        orbitToggleButton.setAttribute("aria-label", orbitToggleButton.title);
+      }
+
+      function stopOrbitLoop() {
+        if (orbitHandle) {
+          cancelAnimationFrame(orbitHandle);
+          orbitHandle = null;
+        }
+      }
+
+      function clearOrbitResumeTimer() {
+        if (orbitResumeTimer) {
+          clearTimeout(orbitResumeTimer);
+          orbitResumeTimer = null;
+        }
+      }
+
+      function orbitLoop() {
+        orbitHandle = null;
+        if (!orbitOn || !renderer || orbitSuspendedForDrag) return;
+        if (typeof renderer.stepAutoOrbitXZ === "function") renderer.stepAutoOrbitXZ(0.0022);
+        else if (typeof renderer.stepAutoOrbit === "function") renderer.stepAutoOrbit(0.0022);
+        renderer.invalidate();
+        orbitHandle = requestAnimationFrame(orbitLoop);
+      }
+
+      function startOrbitLoop() {
+        if (!orbitOn || !renderer || orbitSuspendedForDrag || orbitHandle) return;
+        orbitHandle = requestAnimationFrame(orbitLoop);
+      }
+
+      function scheduleOrbitResume(delay) {
+        clearOrbitResumeTimer();
+        if (!orbitOn) return;
+        orbitResumeTimer = setTimeout(function () {
+          orbitResumeTimer = null;
+          orbitSuspendedForDrag = false;
+          startOrbitLoop();
+        }, typeof delay === "number" ? delay : ORBIT_RESUME_DELAY_MS);
+      }
+
+      fitViewButton && fitViewButton.addEventListener("click", function () {
+        try {
+          renderer.fitScene && renderer.fitScene(true);
+          logLine("info", "Viewer fit to current scene bounds.");
+        } catch (error) {
+          logLine("error", "Fit view failed: " + (error && error.message ? error.message : error));
+        }
+      });
+
+      resetViewButton && resetViewButton.addEventListener("click", function () {
+        try {
+          renderer.resetView && renderer.resetView();
+          logLine("info", "Viewer reset to the home camera direction.");
+        } catch (error) {
+          logLine("error", "Reset view failed: " + (error && error.message ? error.message : error));
+        }
+      });
+
+      orbitToggleButton && orbitToggleButton.addEventListener("click", function () {
+        orbitOn = !orbitOn;
+        orbitSuspendedForDrag = false;
+        clearOrbitResumeTimer();
+        setOrbitButtonLabel();
+        if (orbitOn) {
+          startOrbitLoop();
+          logLine("info", "Auto orbit enabled.");
+        } else {
+          stopOrbitLoop();
+          logLine("info", "Auto orbit disabled.");
+        }
+      });
+
+      const orbitCanvas = renderer && renderer.canvas ? renderer.canvas : document.getElementById("glcanvas");
+      orbitCanvas && orbitCanvas.addEventListener("progen3d:viewdragstart", function () {
+        if (!orbitOn) return;
+        orbitSuspendedForDrag = true;
+        clearOrbitResumeTimer();
+        stopOrbitLoop();
+      });
+      orbitCanvas && orbitCanvas.addEventListener("progen3d:viewdragend", function () {
+        if (!orbitOn) return;
+        scheduleOrbitResume();
+      });
+      setOrbitButtonLabel();
+
+      function createEmptyDesignerResult() {
+        return {
+          generation: {
+            mode: generatorModeInput && generatorModeInput.value ? generatorModeInput.value : "motif",
+            seed: Number(seedInput && seedInput.value ? seedInput.value : Date.now()) >>> 0,
+            title: "Pending",
+            primary: "-",
+            secondary: "-",
+            sourceType: "-",
+            buildingType: "-",
+            metrics: null
+          },
+          source: {
+            raw: "",
+            rewritten: ""
+          },
+          grammar: {
+            ok: false,
+            error: "",
+            tokenCount: 0,
+            ruleCount: 0,
+            entryRule: "-"
+          },
+          scene: {
+            itemCount: 0,
+            cubeCount: 0,
+            bounds: "-"
+          },
+          joins: {
+            joinedCount: 0,
+            looseCount: 0,
+            connectorCount: 0
+          },
+          render: {
+            ok: false,
+            reason: "",
+            logs: []
+          }
+        };
+      }
+
+      function ensureDesignerResult() {
+        if (!designerResult) designerResult = createEmptyDesignerResult();
+        return designerResult;
+      }
+
+      function resolveSeed(value) {
+        if (value != null && Number.isFinite(Number(value))) {
+          return Number(value) >>> 0;
+        }
+        return (((Date.now() >>> 0) ^ (Math.floor(Math.random() * 0xffffffff) >>> 0)) >>> 0);
+      }
+
+      function setActiveSeed(seed) {
+        currentRenderSeed = resolveSeed(seed);
+        const result = ensureDesignerResult();
+        result.generation.seed = currentRenderSeed;
+        if (seedInput) {
+          seedInput.value = String(currentRenderSeed);
+        }
+        return currentRenderSeed;
+      }
+
+      function appendResultCard(container, card) {
+        const cardNode = document.createElement("div");
+        cardNode.className = "result-card";
+
+        const labelNode = document.createElement("div");
+        labelNode.className = "result-label";
+        labelNode.textContent = String(card.label || "");
+
+        const valueNode = document.createElement("div");
+        valueNode.className = "result-value";
+        valueNode.textContent = String(card.value || "");
+
+        const metaNode = document.createElement("div");
+        metaNode.className = "result-meta";
+        metaNode.textContent = String(card.meta || "");
+
+        cardNode.appendChild(labelNode);
+        cardNode.appendChild(valueNode);
+        cardNode.appendChild(metaNode);
+        container.appendChild(cardNode);
+      }
+
+      function appendResultRow(container, row) {
+        const rowNode = document.createElement("div");
+        rowNode.className = "results-row";
+
+        const labelNode = document.createElement("div");
+        labelNode.className = "results-row-label";
+        labelNode.textContent = String(row[0] || "");
+
+        const valueNode = document.createElement("div");
+        valueNode.className = "results-row-value";
+        valueNode.textContent = String(row[1] || "");
+
+        rowNode.appendChild(labelNode);
+        rowNode.appendChild(valueNode);
+        container.appendChild(rowNode);
+      }
+
+      function clearBuildingOverrides() {
+        [
+          buildingWidthInput,
+          buildingDepthInput,
+          buildingProgramInput,
+          buildingFloorsInput,
+          buildingFloorHeightInput,
+          buildingHeightInput,
+          buildingSpanInput,
+          buildingFrameThicknessInput,
+          buildingShellInput,
+          buildingAccentInput
+        ].forEach(function (input) {
+          if (!input) return;
+          if (input.tagName === "SELECT") {
+            input.value = "";
+          } else {
+            input.value = "";
+          }
+        });
+      }
+
+      function toggleBuildingControls() {
+        const isBuildingMode = !!(generatorModeInput && generatorModeInput.value === "building");
+        buildingOnlyFields.forEach(function (field) {
+          field.hidden = !isBuildingMode;
+          const controls = field.querySelectorAll("input, select");
+          Array.prototype.forEach.call(controls, function (control) {
+            control.disabled = !isBuildingMode;
+          });
+        });
+        updateProgramProfile();
+      }
+
+      function readBuildingOverrides() {
+        const overrides = {};
+
+        function assignNumber(key, input) {
+          if (!input || input.value === "") return;
+          const numeric = Number(input.value);
+          if (!Number.isFinite(numeric)) return;
+          overrides[key] = numeric;
+        }
+
+        function assignString(key, input) {
+          if (!input || !input.value) return;
+          overrides[key] = input.value;
+        }
+
+        assignNumber("width", buildingWidthInput);
+        assignNumber("depth", buildingDepthInput);
+        assignString("program", buildingProgramInput);
+        assignNumber("floors", buildingFloorsInput);
+        assignNumber("floorHeight", buildingFloorHeightInput);
+        assignNumber("height", buildingHeightInput);
+        assignNumber("span", buildingSpanInput);
+        assignNumber("frameThickness", buildingFrameThicknessInput);
+        assignString("shell", buildingShellInput);
+        assignString("accent", buildingAccentInput);
+        return overrides;
+      }
+
+      function pushResultLog(kind, text) {
+        const result = ensureDesignerResult();
+        result.render.logs.push({ kind: kind, text: String(text) });
+        if (result.render.logs.length > 12) {
+          result.render.logs = result.render.logs.slice(-12);
+        }
+      }
+
+      function renderStructuredResults() {
+        const result = ensureDesignerResult();
+        const cards = [
+          {
+            label: "Generator",
+            value: result.generation.mode === "building" ? "Building" : "Motif",
+            meta: result.generation.sourceType === "-" ? "Awaiting draft" : result.generation.sourceType
+          },
+          {
+            label: "Seed",
+            value: String(result.generation.seed),
+            meta: result.generation.title || "Pending"
+          },
+          {
+            label: "Grammar",
+            value: result.grammar.ok ? "Parsed" : "Pending",
+            meta: "Rules " + result.grammar.ruleCount + " · Tokens " + result.grammar.tokenCount
+          },
+          {
+            label: "Scene",
+            value: String(result.scene.itemCount),
+            meta: "Cubes " + result.scene.cubeCount
+          },
+          {
+            label: "Joins",
+            value: String(result.joins.joinedCount),
+            meta: "Loose " + result.joins.looseCount + " · Connectors " + result.joins.connectorCount
+          },
+          {
+            label: "Render",
+            value: result.render.ok ? "OK" : "Idle",
+            meta: result.render.reason || "No render yet"
+          }
+        ];
+
+        resultsGrid.textContent = "";
+        cards.forEach(function (card) {
+          appendResultCard(resultsGrid, card);
+        });
+
+        const detailRows = [
+          ["Title", result.generation.title || "Pending"],
+          ["Primary", result.generation.primary || "-"],
+          ["Secondary", result.generation.secondary || "-"],
+          ["Building type", result.generation.buildingType || "-"],
+          ["Program", result.generation.metrics && result.generation.metrics.program ? result.generation.metrics.program : "-"],
+          ["Floors", result.generation.metrics && result.generation.metrics.floors != null ? String(result.generation.metrics.floors) : "-"],
+          ["Footprint", result.generation.metrics && result.generation.metrics.footprint ? result.generation.metrics.footprint : "-"],
+          ["Height", result.generation.metrics && result.generation.metrics.heightClass ? result.generation.metrics.heightClass : "-"],
+          ["Entry", result.grammar.entryRule || "-"],
+          ["Parse error", result.grammar.error || "None"],
+          ["Bounds", result.scene.bounds || "-"],
+          ["Last event", result.render.logs.length ? result.render.logs[result.render.logs.length - 1].text : "None"]
+        ];
+
+        resultsDetails.textContent = "";
+        detailRows.forEach(function (row) {
+          appendResultRow(resultsDetails, row);
+        });
+      }
+
+      function setSummary(details) {
+        const result = ensureDesignerResult();
+        result.generation.title = details.title || result.generation.title;
+        result.generation.primary = details.primary || result.generation.primary;
+        result.generation.secondary = details.secondary || result.generation.secondary;
+        statusOutput.textContent = details.status || "Ready";
+        titleOutput.textContent = details.title || "Pending";
+        primaryOutput.textContent = details.primary || "-";
+        secondaryOutput.textContent = details.secondary || "-";
+        cubesOutput.textContent = details.cubes || "-";
+        renderStructuredResults();
+      }
+
+      function formatNumber(value) {
+        return Number(value).toFixed(3).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
+      }
+
+      function ingestGeneratedDraft(draft, reason) {
+        if (!draft || !draft.grammar) return;
+        designerResult = createEmptyDesignerResult();
+        designerResult.generation.mode = draft.mode || (generatorModeInput && generatorModeInput.value ? generatorModeInput.value : "motif");
+        designerResult.generation.seed = setActiveSeed(draft.seed != null ? draft.seed : (seedInput && seedInput.value));
+        designerResult.generation.title = draft.title || "Generated grammar";
+        designerResult.generation.primary = draft.primary || draft.primaryArchetype || "-";
+        designerResult.generation.secondary = draft.secondary || draft.secondaryArchetype || "-";
+        designerResult.generation.sourceType = reason || "Generated";
+        designerResult.source.raw = String(draft.grammar || "");
+        if (draft.buildingType) {
+          designerResult.generation.buildingType = draft.buildingType;
+        } else {
+          designerResult.generation.buildingType = "-";
+        }
+        if (draft.metrics) {
+          designerResult.generation.metrics = draft.metrics;
+        } else {
+          designerResult.generation.metrics = null;
+        }
+        if (draft.spec && draft.spec.massing) {
+          if (buildingWidthInput && draft.spec.massing.width != null) buildingWidthInput.value = formatNumber(draft.spec.massing.width);
+          if (buildingDepthInput && draft.spec.massing.depth != null) buildingDepthInput.value = formatNumber(draft.spec.massing.depth);
+          if (buildingFloorsInput && draft.spec.massing.floors != null) buildingFloorsInput.value = String(draft.spec.massing.floors);
+          if (buildingFloorHeightInput && draft.spec.massing.floorHeight != null) buildingFloorHeightInput.value = formatNumber(draft.spec.massing.floorHeight);
+        }
+        if (draft.spec && draft.spec.structure) {
+          if (buildingHeightInput) {
+            if (draft.spec.structure.height != null) {
+              buildingHeightInput.value = formatNumber(draft.spec.structure.height);
+            } else if (draft.spec.structure.towerHeight != null) {
+              buildingHeightInput.value = formatNumber(draft.spec.structure.towerHeight);
+            } else {
+              buildingHeightInput.value = "";
+            }
+          }
+          if (buildingSpanInput) buildingSpanInput.value = draft.spec.structure.span != null ? formatNumber(draft.spec.structure.span) : "";
+          if (buildingFrameThicknessInput) {
+            if (draft.spec.structure.frame != null) {
+              buildingFrameThicknessInput.value = formatNumber(draft.spec.structure.frame);
+            } else if (draft.spec.structure.wall != null) {
+              buildingFrameThicknessInput.value = formatNumber(draft.spec.structure.wall);
+            } else {
+              buildingFrameThicknessInput.value = "";
+            }
+          }
+        }
+        if (draft.spec) {
+          if (buildingShellInput) buildingShellInput.value = draft.spec.shell || "";
+          if (buildingAccentInput) buildingAccentInput.value = draft.spec.accent || "";
+          if (buildingProgramInput) buildingProgramInput.value = draft.spec.program || "";
+          updateProgramProfile();
+        }
+        const formatted = formatDesignerGrammar(applySelectedDeformationOperators(convertGeneratedGrammarToRandomVariables(draft.grammar)));
+        designerResult.source.rewritten = formatted;
+        sourceInput.value = formatted;
+        updateLineNumbers();
+        syncGutterScroll();
+        setSummary({
+          status: "Generated",
+          title: draft.title || "Generated grammar",
+          primary: draft.primary || draft.primaryArchetype || "-",
+          secondary: draft.secondary || draft.secondaryArchetype || "-",
+          cubes: Number.isFinite(Number(draft.cubeCount)) ? String(draft.cubeCount) : "-"
+        });
+        metaOutput.textContent = reason || "Grammar generated.";
+        renderStructuredResults();
+        return renderGrammar(formatted, reason || "Generated draft");
+      }
+
+      function generateBuildingDraft() {
+        const seed = Number(seedInput.value || Date.now()) >>> 0;
+        const generator = window.PG3DBuildingGenerator;
+        if (!generator || typeof generator.buildDraft !== "function") {
+          logLine("error", "Building generator module is not available.");
+          return;
+        }
+        const requestedType = buildingTypeInput && buildingTypeInput.value ? buildingTypeInput.value : "random";
+        const overrides = readBuildingOverrides();
+        for (let attempt = 0; attempt < MAX_BUILDING_RETRIES; attempt += 1) {
+          const attemptSeed = (seed + attempt * 2654435761) >>> 0;
+          const building = generator.buildDraft(attemptSeed, requestedType, overrides);
+          const reason = attempt === 0 ? "Generated building" : "Generated building retry " + (attempt + 1);
+          const renderSummary = ingestGeneratedDraft(Object.assign({ seed: attemptSeed }, building), reason);
+          const accepted = renderSummary && renderSummary.ok && renderSummary.cubeCount > 0 && renderSummary.looseCount === 0;
+          if (accepted) {
+            if (attempt > 0) {
+              metaOutput.textContent = "Accepted building after " + (attempt + 1) + " attempts.";
+            }
+            return;
+          }
+        }
+        metaOutput.textContent = "No fully joined building found after " + MAX_BUILDING_RETRIES + " attempts. Showing last draft.";
+      }
+
+      function applyBuildingExample(exampleKey) {
+        const preset = BUILDING_EXAMPLES[exampleKey];
+        if (!preset) return;
+        if (generatorModeInput) generatorModeInput.value = "building";
+        if (buildingTypeInput) buildingTypeInput.value = preset.type;
+        if (seedInput) seedInput.value = String(preset.seed >>> 0);
+        clearBuildingOverrides();
+        toggleBuildingControls();
+      }
+
+      function formatDesignerGrammar(text) {
+        return String(text || "")
+          .split("\n")
+          .map(function (line) {
+            const trimmed = line.trim();
+            if (trimmed === "[" || trimmed === "]") {
+              return "  " + trimmed;
+            }
+            return line;
+          })
+          .join("\n");
+      }
+
+      function normalizeTripleValues(rawValue, fallback) {
+        const matches = String(rawValue || "").match(/-?\d+(?:\.\d+)?/g) || [];
+        const values = matches.slice(0, 3);
+        while (values.length < 3) values.push(fallback);
+        return values.join(" ");
+      }
+
+      function randomExprForDeformationValue(value) {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return String(value);
+        if (numeric === 0 || numeric === 1) return String(numeric);
+        const abs = Math.abs(numeric);
+        const spread = Math.max(abs * 0.18, 0.06);
+        const min = (numeric - spread).toFixed(3).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
+        const max = (numeric + spread).toFixed(3).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
+        return "rand( " + min + " " + max + " )";
+      }
+
+      function buildRandomizedTripleValues(rawValue, fallback) {
+        return normalizeTripleValues(rawValue, fallback)
+          .split(/\s+/)
+          .map(randomExprForDeformationValue)
+          .join(" ");
+      }
+
+      function buildSharedDeformationStatements() {
+        const statements = [];
+        const dsMode = dsModeInput && dsModeInput.value ? dsModeInput.value : "";
+        const dtMode = dtModeInput && dtModeInput.value ? dtModeInput.value : "";
+        if (dsMode) {
+          statements.push(dsMode + " ( " + buildRandomizedTripleValues(dsValuesInput && dsValuesInput.value, "1") + " )");
+        }
+        if (dtMode) {
+          statements.push(dtMode + " ( " + buildRandomizedTripleValues(dtValuesInput && dtValuesInput.value, "0") + " )");
+        }
+        return statements;
+      }
+
+      function applySelectedDeformationOperators(text) {
+        const statements = buildSharedDeformationStatements();
+        if (!statements.length) return String(text || "");
+        const prefix = statements.join(" ");
+        return String(text || "")
+          .split("\n")
+          .map(function (line) {
+            if (line.indexOf("I (") < 0) return line;
+            const normalizedLine = line.replace(/(?:(?:DS[XYZ]|DT[XYZ])\s*\(\s*[^)]*\)\s*)+(?=I\s*\()/g, "");
+            return normalizedLine.replace(/I\s*\(/g, prefix + " I (");
+          })
+          .join("\n");
+      }
+
+      function makeRandomVariableRange(callName, argIndex, value) {
+        if (callName === "A" && argIndex === 1) {
+          return { min: value, max: value, integer: true };
+        }
+        const abs = Math.abs(value);
+        if (abs === 0) {
+          return { min: 0, max: 0, integer: false };
+        }
+        const spread = Math.max(abs * 0.18, 0.06);
+        return {
+          min: value - spread,
+          max: value + spread,
+          integer: false
+        };
+      }
+
+      function replaceNumericLiteralsWithRandomVariables(argText, callName, ruleState) {
+        let argIndex = -1;
+        return String(argText).replace(/(^|[^A-Za-z_])(-?(?:\d+\.\d+|\d+))(?![A-Za-z_0-9.])/g, function (match, prefix, numericText) {
+          const value = Number(numericText);
+          if (!Number.isFinite(value)) return match;
+          argIndex += 1;
+          if (value === 0 || value === 1) {
+            return prefix + numericText;
+          }
+          const variableName = ruleState.prefix + "_r" + String(ruleState.count + 1).padStart(2, "0");
+          ruleState.count += 1;
+          if (Array.isArray(ruleState.variableNames)) {
+            ruleState.variableNames.push(variableName);
+          }
+          const range = makeRandomVariableRange(callName, argIndex, value);
+          const declPrefix = range.integer ? "R*" : "R";
+          ruleState.declarations.push(
+            declPrefix + " " + variableName + " ( " +
+            String(range.min).replace(/\.0+$/, "") + " " +
+            String(range.max).replace(/\.0+$/, "") + " )"
+          );
+          return prefix + variableName;
+        });
+      }
+
+      function processRuleBodyLine(line, ruleState) {
+        if (!line || !ruleState) return line;
+        if (/^\s*\/\//.test(line)) return line;
+        return line.replace(/([A-Za-z_][A-Za-z0-9_]*)\s*\(([^()]*)\)/g, function (match, callName, argText) {
+          if (callName === "I" || callName === "sin" || callName === "cos" || callName === "tan" || callName === "abs" || callName === "sqrt" || callName === "floor" || callName === "ceil" || callName === "min" || callName === "max") {
+            return match;
+          }
+          return callName + "( " + replaceNumericLiteralsWithRandomVariables(argText, callName, ruleState).trim() + " )";
+        });
+      }
+
+      function convertGeneratedGrammarToRandomVariables(text) {
+        const lines = String(text || "").split("\n");
+        const out = [];
+        let pendingRuleState = null;
+
+        function flushDeclarations() {
+          if (!pendingRuleState || !pendingRuleState.declarations.length) return;
+          pendingRuleState.declarations.forEach(function (decl) {
+            out.push("  " + decl);
+          });
+          pendingRuleState.declarations = [];
+        }
+
+        lines.forEach(function (rawLine) {
+          const match = rawLine.match(/^([A-Za-z_][A-Za-z0-9_]*(?:\s*\([^)]*\))?)\s*->\s*(.*)$/);
+          if (match) {
+            flushDeclarations();
+            const ruleName = (match[1].match(/^([A-Za-z_][A-Za-z0-9_]*)/) || [null, "rule"])[1];
+            pendingRuleState = {
+              ruleName: ruleName,
+              prefix: ruleName.toLowerCase(),
+              count: 0,
+              declarations: [],
+              variableNames: []
+            };
+            out.push(match[1] + " ->");
+            const tail = match[2] || "";
+            const processedTail = processRuleBodyLine(tail, pendingRuleState).trim();
+            flushDeclarations();
+            if (processedTail) {
+              out.push(processedTail);
+            }
+            return;
+          }
+
+          if (pendingRuleState) {
+            const processedLine = processRuleBodyLine(rawLine, pendingRuleState);
+            flushDeclarations();
+            out.push(processedLine);
+            return;
+          }
+
+          out.push(rawLine);
+        });
+
+        flushDeclarations();
+        return out.join("\n");
+      }
+
+      function renderGrammar(text, reason) {
+        const trimmed = String(text || "").trim();
+        const result = ensureDesignerResult();
+        const renderSeed = setActiveSeed(seedInput && seedInput.value ? seedInput.value : result.generation.seed);
+        result.render.reason = reason || "Render";
+        result.source.rewritten = trimmed;
+        if (!trimmed) {
+          scene.clear();
+          renderer.setScene(scene);
+          renderer.invalidate();
+          metaOutput.textContent = "Editor is empty.";
+          result.render.ok = false;
+          result.grammar.ok = false;
+          setSummary({ status: "Empty" });
+          logLine("warn", "No grammar to render.");
+          return { ok: false, cubeCount: 0, looseCount: 0, connectorCount: 0, itemCount: 0, error: "Empty grammar" };
+        }
+
+        try {
+          consoleOutput.innerHTML = "";
+          logLine("info", (reason || "Render") + ": parsing grammar.");
+          scene.clear();
+          const grammar = new Grammar(trimmed, { debug: true, seed: renderSeed });
+          window.__PG3D_ACTIVE_GRAMMAR__ = grammar;
+          const tokens = Array.isArray(grammar.visualTokens) ? grammar.visualTokens : [];
+          const ruleNames = grammar && grammar.rules ? Object.keys(grammar.rules) : [];
+          result.grammar.ok = true;
+          result.grammar.error = "";
+          result.grammar.tokenCount = tokens.length;
+          result.grammar.ruleCount = ruleNames.length;
+          result.grammar.entryRule = grammar && grammar.entryRule ? grammar.entryRule : (ruleNames[0] || "-");
+          prepare(tokens, scene);
+          renderer.setScene(scene);
+          renderer.invalidate();
+          renderer.fitScene && renderer.fitScene(true);
+          const joinSummary = auditAndRepairJoins(scene) || { joinedCount: 0, looseCount: 0, connectorCount: 0 };
+          renderer.setScene(scene);
+          renderer.invalidate();
+          renderer.fitScene && renderer.fitScene(true);
+          const items = typeof scene.getAll === "function" ? scene.getAll() : [];
+          const bounds = typeof scene.getBounds === "function" ? scene.getBounds() : null;
+          result.scene.itemCount = Array.isArray(items) ? items.length : 0;
+          result.scene.cubeCount = Array.isArray(items) ? items.filter(function (item) {
+            return item && String(item.type || item.prim || "").indexOf("Cube") === 0;
+          }).length : 0;
+          result.scene.bounds = bounds ? (
+            "Bounds " +
+            [bounds.minX, bounds.minY, bounds.minZ].map(formatNumber).join(", ") +
+            " -> " +
+            [bounds.maxX, bounds.maxY, bounds.maxZ].map(formatNumber).join(", ")
+          ) : "Bounds unavailable";
+          result.joins = joinSummary;
+          result.render.ok = true;
+          metaOutput.textContent = "Rendered " + tokens.length + " visual tokens from the current grammar with seed " + renderSeed + ".";
+          setSummary({
+            status: "Rendered",
+            title: titleOutput.textContent,
+            primary: primaryOutput.textContent,
+            secondary: secondaryOutput.textContent,
+            cubes: cubesOutput.textContent
+          });
+          logLine("info", "Render complete.");
+          return {
+            ok: true,
+            cubeCount: result.scene.cubeCount,
+            looseCount: result.joins.looseCount,
+            connectorCount: result.joins.connectorCount,
+            itemCount: result.scene.itemCount,
+            error: ""
+          };
+        } catch (error) {
+          metaOutput.textContent = "Render failed.";
+          result.render.ok = false;
+          result.grammar.ok = false;
+          result.grammar.error = error && error.message ? error.message : String(error);
+          result.scene.itemCount = 0;
+          result.scene.cubeCount = 0;
+          result.scene.bounds = "-";
+          result.joins = { joinedCount: 0, looseCount: 0, connectorCount: 0 };
+          setSummary({
+            status: "Error",
+            title: titleOutput.textContent,
+            primary: primaryOutput.textContent,
+            secondary: secondaryOutput.textContent,
+            cubes: "-"
+          });
+          logLine("error", error && error.message ? error.message : String(error));
+          return {
+            ok: false,
+            cubeCount: 0,
+            looseCount: 0,
+            connectorCount: 0,
+            itemCount: 0,
+            error: error && error.message ? error.message : String(error)
+          };
+        }
+      }
+
+      function matIdentity() {
+        return new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+      }
+
+      function matTranslateScale(tx, ty, tz, sx, sy, sz) {
+        const m = matIdentity();
+        m[0] = sx;
+        m[5] = sy;
+        m[10] = sz;
+        m[12] = tx;
+        m[13] = ty;
+        m[14] = tz;
+        return m;
+      }
+
+      function makeAabb(item) {
+        const verts = item && Array.isArray(item.verts) ? item.verts : [];
+        let minX = Infinity;
+        let minY = Infinity;
+        let minZ = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+        let maxZ = -Infinity;
+        verts.forEach(function (v) {
+          if (!Array.isArray(v) || v.length < 3) return;
+          minX = Math.min(minX, v[0]);
+          minY = Math.min(minY, v[1]);
+          minZ = Math.min(minZ, v[2]);
+          maxX = Math.max(maxX, v[0]);
+          maxY = Math.max(maxY, v[1]);
+          maxZ = Math.max(maxZ, v[2]);
+        });
+        return { minX, minY, minZ, maxX, maxY, maxZ };
+      }
+
+      function aabbCenter(box) {
+        return [
+          (box.minX + box.maxX) * 0.5,
+          (box.minY + box.maxY) * 0.5,
+          (box.minZ + box.maxZ) * 0.5
+        ];
+      }
+
+      function nearestPointOnAabb(box, point) {
+        return [
+          Math.max(box.minX, Math.min(box.maxX, point[0])),
+          Math.max(box.minY, Math.min(box.maxY, point[1])),
+          Math.max(box.minZ, Math.min(box.maxZ, point[2]))
+        ];
+      }
+
+      function pointDistance(a, b) {
+        const dx = a[0] - b[0];
+        const dy = a[1] - b[1];
+        const dz = a[2] - b[2];
+        return Math.hypot(dx, dy, dz);
+      }
+
+      function nearestBridgePoints(a, b) {
+        const centerA = aabbCenter(a);
+        const centerB = aabbCenter(b);
+        const pointA = nearestPointOnAabb(a, centerB);
+        const pointB = nearestPointOnAabb(b, centerA);
+        return { pointA, pointB, distance: pointDistance(pointA, pointB) };
+      }
+
+      function aabbTouches(a, b, tolerance) {
+        return !(
+          a.maxX < b.minX - tolerance ||
+          a.minX > b.maxX + tolerance ||
+          a.maxY < b.minY - tolerance ||
+          a.minY > b.maxY + tolerance ||
+          a.maxZ < b.minZ - tolerance ||
+          a.minZ > b.maxZ + tolerance
+        );
+      }
+
+      function addConnectorSegment(currentScene, start, end, texture) {
+        const tolerance = 0.02;
+        const dx = end[0] - start[0];
+        const dy = end[1] - start[1];
+        const dz = end[2] - start[2];
+        const thickness = 0.16;
+
+        if (Math.abs(dx) > tolerance) {
+          const x0 = dx >= 0 ? start[0] : end[0];
+          currentScene.add(
+            "CubeX",
+            matTranslateScale(x0, start[1], start[2], Math.abs(dx), thickness, thickness),
+            matIdentity(),
+            matIdentity(),
+            texture,
+            0,
+            0.12,
+            "x",
+            { active: false }
+          );
+          start = [end[0], start[1], start[2]];
+        }
+        if (Math.abs(dy) > tolerance) {
+          const y0 = dy >= 0 ? start[1] : end[1];
+          currentScene.add(
+            "CubeY",
+            matTranslateScale(start[0], y0, start[2], thickness, Math.abs(dy), thickness),
+            matIdentity(),
+            matIdentity(),
+            texture,
+            0,
+            0.12,
+            "y",
+            { active: false }
+          );
+          start = [start[0], end[1], start[2]];
+        }
+        if (Math.abs(dz) > tolerance) {
+          const z0 = dz >= 0 ? start[2] : end[2];
+          currentScene.add(
+            "CubeZ",
+            matTranslateScale(start[0], start[1], z0, thickness, thickness, Math.abs(dz)),
+            matIdentity(),
+            matIdentity(),
+            texture,
+            0,
+            0.12,
+            "z",
+            { active: false }
+          );
+        }
+      }
+
+      function auditAndRepairJoins(currentScene) {
+        if (!currentScene || typeof currentScene.getAll !== "function") return;
+        const items = currentScene.getAll();
+        if (!Array.isArray(items) || !items.length) return;
+        const accepted = [];
+        const tolerance = 0.035;
+        let joinedCount = 0;
+        let looseCount = 0;
+        let connectorCount = 0;
+
+        items.forEach(function (item, index) {
+          const box = makeAabb(item);
+          let joined = index === 0;
+          let nearest = null;
+          for (let i = 0; i < accepted.length; i += 1) {
+            if (aabbTouches(box, accepted[i].box, tolerance)) {
+              joined = true;
+              break;
+            }
+            const bridge = nearestBridgePoints(box, accepted[i].box);
+            if (!nearest || bridge.distance < nearest.distance) {
+              nearest = { accepted: accepted[i], bridge };
+            }
+          }
+          if (joined) {
+            joinedCount += 1;
+          } else {
+            looseCount += 1;
+            logLine("warn", "Join audit: cube " + (index + 1) + " does not touch any previous cube.");
+            if (nearest) {
+              addConnectorSegment(currentScene, nearest.bridge.pointA, nearest.bridge.pointB, item.texIndex || item.texture || "brushedAluminum");
+              connectorCount += 1;
+              logLine("info", "Join repair: added connector path for cube " + (index + 1) + ".");
+            }
+          }
+          accepted.push({ item, box });
+        });
+
+        logLine("info", "Join audit: " + joinedCount + "/" + items.length + " cubes joined sequentially" + (looseCount ? " · loose " + looseCount : "") + (connectorCount ? " · connectors " + connectorCount : "") + ".");
+        return {
+          joinedCount: joinedCount,
+          looseCount: looseCount,
+          connectorCount: connectorCount,
+          itemCount: items.length
+        };
+      }
+
+      function syncFromGeneratedDraft(draft) {
+        if (!draft || !draft.grammar) return;
+        ingestGeneratedDraft({
+          mode: "motif",
+          seed: draft.seed,
+          title: draft.title,
+          primary: draft.primaryArchetype,
+          secondary: draft.secondaryArchetype,
+          cubeCount: draft.cubeCount,
+          grammar: draft.grammar
+        }, draft.status || "Generated draft");
+        metaOutput.textContent = draft.validationMessage || "Grammar generated.";
+      }
+
+      window.addEventListener("pg3d-writer-draft", function (event) {
+        if (!generatorModeInput || generatorModeInput.value !== "motif") return;
+        syncFromGeneratedDraft(event.detail);
+      });
+
+      if (window.PG3DWriterState && typeof window.PG3DWriterState.getPrimaryDraft === "function") {
+        syncFromGeneratedDraft(window.PG3DWriterState.getPrimaryDraft());
+      }
+
+      generateButton.addEventListener("click", function (event) {
+        if (!generatorModeInput || generatorModeInput.value !== "building") return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        generateBuildingDraft();
+      }, true);
+
+      randomSeedButton.addEventListener("click", function (event) {
+        if (!generatorModeInput || generatorModeInput.value !== "building") return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        seedInput.value = String((Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0);
+        generateBuildingDraft();
+      }, true);
+
+      if (buildingExampleInput) {
+        buildingExampleInput.addEventListener("change", function () {
+          if (!buildingExampleInput.value) return;
+          applyBuildingExample(buildingExampleInput.value);
+          generateBuildingDraft();
+        });
+      }
+
+      if (generatorModeInput) {
+        generatorModeInput.addEventListener("change", function () {
+          toggleBuildingControls();
+        });
+      }
+
+      if (buildingProgramInput) {
+        buildingProgramInput.addEventListener("change", function () {
+          updateProgramProfile();
+        });
+      }
+
+      renderButton.addEventListener("click", function () {
+        const updatedSource = formatDesignerGrammar(applySelectedDeformationOperators(sourceInput.value));
+        sourceInput.value = updatedSource;
+        updateLineNumbers();
+        renderGrammar(updatedSource, "Manual render");
+      });
+      sourceInput.addEventListener("input", updateLineNumbers);
+      sourceInput.addEventListener("scroll", syncGutterScroll);
+
+      sourceInput.value = "Start -> I ( Cube grayStone 0.2 )";
+      updateLineNumbers();
+      toggleBuildingControls();
+      updateProgramProfile();
+      designerResult = createEmptyDesignerResult();
+      renderStructuredResults();
+      setSummary({
+        status: "Generating",
+        title: "Pending",
+        primary: "-",
+        secondary: "-",
+        cubes: "-"
+      });
+      metaOutput.textContent = "Waiting for the first generated grammar.";
+    })();
+  </script>
+</body>
+</html>

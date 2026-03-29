@@ -1,0 +1,66 @@
+<?php
+require __DIR__ . '/includes/bootstrap.php';
+if (current_user()) {
+    header('Location: editor.php');
+    exit;
+}
+
+$error = null;
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
+    $username = trim((string) ($_POST['username'] ?? ''));
+    $password = (string) ($_POST['password'] ?? '');
+    $user = find_user_by_username($username);
+    if ($user && password_verify($password, $user['password_hash'])) {
+        session_regenerate_id(true);
+        $_SESSION['user_id'] = (int) $user['id'];
+        csrf_regenerate_token();
+        flash_set('success', 'Welcome back, ' . $user['username'] . '.');
+        header('Location: editor.php');
+        exit;
+    }
+    $error = 'Invalid username or password.';
+}
+
+render_header('Login', 'login');
+?>
+<main class="site-shell auth-shell">
+  <section class="auth-grid">
+    <article class="auth-card auth-card--intro">
+      <div>
+        <span class="page-kicker">Sign in</span>
+        <h1>Return to your grammar workspace</h1>
+        <p class="lead">Login gives you access to the embedded editor, saved drafts, live publish controls, and gallery remix workflow.</p>
+      </div>
+      <div class="data-points">
+        <div class="data-point">Private draft storage inside the site</div>
+        <div class="data-point">Publish or unpublish grammars without leaving your account workspace</div>
+        <div class="data-point">Copy gallery work back into the editor for new iterations</div>
+      </div>
+    </article>
+
+    <section class="auth-card">
+      <h1>Login</h1>
+      <p class="muted">Open the editor, save private grammars, and publish selected works to the gallery.</p>
+      <?php if ($error): ?>
+        <div class="form-error"><?= e($error) ?></div>
+      <?php endif; ?>
+      <form method="post" class="auth-form">
+        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+        <label>Username
+          <input type="text" name="username" required value="<?= e($_POST['username'] ?? '') ?>">
+        </label>
+        <label>Password
+          <input type="password" name="password" required>
+        </label>
+        <button class="btn btn-primary" type="submit">Login</button>
+      </form>
+      <div class="section-band">
+        <strong>New to this site?</strong>
+        <p class="muted">Create an account to save drafts, organise files, and publish grammars into the public gallery.</p>
+        <a class="btn btn-secondary btn-sm" href="register.php">Create account</a>
+      </div>
+    </section>
+  </section>
+</main>
+<?php render_footer(); ?>

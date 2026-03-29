@@ -1,0 +1,83 @@
+<?php
+require __DIR__ . '/includes/bootstrap.php';
+if (current_user()) {
+    header('Location: editor.php');
+    exit;
+}
+
+$errors = [];
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
+    $username = trim((string) ($_POST['username'] ?? ''));
+    $password = (string) ($_POST['password'] ?? '');
+    $confirm = (string) ($_POST['password_confirm'] ?? '');
+
+    if ($username === '' || !preg_match('/^[A-Za-z0-9_-]{3,32}$/', $username)) {
+        $errors[] = 'Choose a username with 3 to 32 letters, numbers, underscores, or dashes.';
+    }
+    if (strlen($password) < 8) {
+        $errors[] = 'Password must be at least 8 characters.';
+    }
+    if ($password !== $confirm) {
+        $errors[] = 'Password confirmation does not match.';
+    }
+    if (find_user_by_username($username)) {
+        $errors[] = 'That username is already in use.';
+    }
+
+    if (!$errors) {
+        $user = create_user_record($username, password_hash($password, PASSWORD_DEFAULT));
+        session_regenerate_id(true);
+        $_SESSION['user_id'] = (int) $user['id'];
+        csrf_regenerate_token();
+        flash_set('success', 'Account created. Welcome to the grammar studio.');
+        header('Location: editor.php');
+        exit;
+    }
+}
+
+render_header('Create account', 'login');
+?>
+<main class="site-shell auth-shell">
+  <section class="auth-grid">
+    <article class="auth-card auth-card--intro">
+      <div>
+        <span class="page-kicker">Create account</span>
+        <h1>Start building your ProGen3D workspace</h1>
+        <p class="lead">Registration unlocks private file storage, publish-to-gallery controls, and a repeatable workflow around the live modular editor.</p>
+      </div>
+      <div class="data-points">
+        <div class="data-point">Save drafts under your own account</div>
+        <div class="data-point">Open examples and adapt them in the editor</div>
+        <div class="data-point">Publish selected grammars to the gallery when ready</div>
+      </div>
+    </article>
+
+    <section class="auth-card">
+      <h1>Create account</h1>
+      <p class="muted">Start saving grammars, managing files, and publishing selected pieces to the gallery.</p>
+      <?php foreach ($errors as $error): ?>
+        <div class="form-error"><?= e($error) ?></div>
+      <?php endforeach; ?>
+      <form method="post" class="auth-form">
+        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+        <label>Username
+          <input type="text" name="username" required maxlength="32" value="<?= e($_POST['username'] ?? '') ?>">
+        </label>
+        <label>Password
+          <input type="password" name="password" required>
+        </label>
+        <label>Confirm password
+          <input type="password" name="password_confirm" required>
+        </label>
+        <button class="btn btn-primary" type="submit">Create account</button>
+      </form>
+      <div class="section-band">
+        <strong>Already have an account?</strong>
+        <p class="muted">Sign in to continue editing your saved grammars.</p>
+        <a class="btn btn-secondary btn-sm" href="login.php">Login</a>
+      </div>
+    </section>
+  </section>
+</main>
+<?php render_footer(); ?>

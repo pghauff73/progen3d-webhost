@@ -1,0 +1,1267 @@
+//------------------------------------------------
+// grammar.js
+// Progen3D grammar parser + runtime + debugger
+//------------------------------------------------
+
+class Token {
+    constructor(type, value, pos = 0) {
+        this.type = type;
+        this.value = value;
+        this.pos = pos;
+    }
+}
+
+//------------------------------------------------
+// TOKENIZER
+//------------------------------------------------
+
+class Tokenizer {
+    constructor(text) {
+        this.text = text || "";
+        this.pos = 0;
+        this.tokens = [];
+        this.index = 0;
+        this.tokenize();
+    }
+
+    tokenize() {
+        const s = this.text;
+        const n = s.length;
+
+        while (this.pos < n) {
+            const c = s[this.pos];
+
+            if (/\s/.test(c)) {
+                this.pos++;
+                continue;
+            }
+
+            if (c === "/" && s[this.pos + 1] === "/") {
+                while (this.pos < n && s[this.pos] !== "\n") this.pos++;
+                continue;
+            }
+
+            if (c === "/" && s[this.pos + 1] === "*") {
+                const start = this.pos;
+                this.pos += 2;
+                while (this.pos < n && !(s[this.pos] === "*" && s[this.pos + 1] === "/")) {
+                    this.pos++;
+                }
+                if (this.pos >= n) {
+                    throw new Error(`Unterminated block comment at ${start}`);
+                }
+                this.pos += 2;
+                continue;
+            }
+
+            if (/[A-Za-z_]/.test(c)) {
+                const start = this.pos;
+                this.pos++;
+                while (this.pos < n && /[A-Za-z0-9_]/.test(s[this.pos])) this.pos++;
+                const id = s.slice(start, this.pos);
+                this.tokens.push(new Token("id", id, start));
+                continue;
+            }
+
+            if (/[0-9]/.test(c) || (c === "." && /[0-9]/.test(s[this.pos + 1] || ""))) {
+                const start = this.pos;
+                let sawDot = false;
+
+                if (c === ".") {
+                    sawDot = true;
+                    this.pos++;
+                } else {
+                    this.pos++;
+                }
+
+                while (this.pos < n) {
+                    const ch = s[this.pos];
+                    if (/[0-9]/.test(ch)) {
+                        this.pos++;
+                        continue;
+                    }
+                    if (ch === "." && !sawDot) {
+                        sawDot = true;
+                        this.pos++;
+                        continue;
+                    }
+                    break;
+                }
+
+                const raw = s.slice(start, this.pos);
+                const value = Number(raw);
+                if (!Number.isFinite(value)) {
+                    throw new Error(`Invalid number '${raw}' at ${start}`);
+                }
+                this.tokens.push(new Token("num", value, start));
+                continue;
+            }
+
+            const two = s.slice(this.pos, this.pos + 2);
+            const three = s.slice(this.pos, this.pos + 3);
+
+            if (three === "->") {
+                this.tokens.push(new Token("->", "->", this.pos));
+                this.pos += 2;
+                continue;
+            }
+
+            if (["<=", ">=", "==", "!=", "->"].includes(two)) {
+                this.tokens.push(new Token(two, two, this.pos));
+                this.pos += 2;
+                continue;
+            }
+
+            if ("+-*/^()[]<>,:?|;".includes(c)) {
+                this.tokens.push(new Token(c, c, this.pos));
+                this.pos++;
+                continue;
+            }
+
+            throw new Error(`Unknown character '${c}' at ${this.pos}`);
+        }
+
+        this.tokens.push(new Token("eof", "eof", this.pos));
+    }
+
+    peek(offset = 0) {
+        return this.tokens[this.index + offset] || this.tokens[this.tokens.length - 1];
+    }
+
+    next() {
+        return this.tokens[this.index++] || this.tokens[this.tokens.length - 1];
+    }
+
+    match(type, value = undefined) {
+        const t = this.peek();
+        if (!t) return false;
+        if (t.type !== type) return false;
+        if (value !== undefined && t.value !== value) return false;
+        this.index++;
+        return true;
+    }
+
+    expect(type, value = undefined, message = "") {
+        const t = this.next();
+        if (!t || t.type !== type || (value !== undefined && t.value !== value)) {
+            const got = t ? `${t.type}:${t.value}` : "EOF";
+            const want = value !== undefined ? `${type}:${value}` : type;
+            throw new Error(message || `Expected ${want}, got ${got}`);
+        }
+        return t;
+    }
+
+    expectId(message = "Expected identifier") {
+        const t = this.expect("id", undefined, message);
+        return t.value;
+    }
+
+    eof() {
+        return this.peek().type === "eof";
+    }
+}
+
+//------------------------------------------------
+// EXPRESSION PARSER
+//------------------------------------------------
+
+class ExpressionParser {
+    constructor(tokens) {
+        this.tokens = tokens;
+    }
+
+    parseExpression() {
+        return this.parseComparison();
+    }
+
+    parseComparison() {
+        let left = this.parseAdd();
+
+        while (true) {
+            const t = this.tokens.peek();
+            if (!t) break;
+
+            if (["<", ">", "<=", ">=", "==", "!="].includes(t.type)) {
+                this.tokens.next();
+                const right = this.parseAdd();
+                left = {
+                    type: "compare",
+                    op: t.type,
+                    left,
+                    right
+                };
+                continue;
+            }
+            break;
+        }
+
+        return left;
+    }
+
+    parseAdd() {
+        let left = this.parseMul();
+
+        while (true) {
+            const t = this.tokens.peek();
+            if (t.type === "+" || t.type === "-") {
+                this.tokens.next();
+                const right = this.parseMul();
+                left = {
+                    type: "bin",
+                    op: t.type,
+                    left,
+                    right
+                };
+                continue;
+            }
+            break;
+        }
+
+        return left;
+    }
+
+    parseMul() {
+        let left = this.parsePow();
+
+        while (true) {
+            const t = this.tokens.peek();
+            if (t.type === "*" || t.type === "/") {
+                this.tokens.next();
+                const right = this.parsePow();
+                left = {
+                    type: "bin",
+                    op: t.type,
+                    left,
+                    right
+                };
+                continue;
+            }
+            break;
+        }
+
+        return left;
+    }
+
+    parsePow() {
+        let left = this.parseUnary();
+
+        const t = this.tokens.peek();
+        if (t.type === "^") {
+            this.tokens.next();
+            const right = this.parsePow();
+            left = {
+                type: "bin",
+                op: "^",
+                left,
+                right
+            };
+        }
+
+        return left;
+    }
+
+    parseUnary() {
+        const t = this.tokens.peek();
+        if (t.type === "-") {
+            this.tokens.next();
+            return {
+                type: "neg",
+                value: this.parseUnary()
+            };
+        }
+        return this.parsePrimary();
+    }
+
+    parsePrimary() {
+        const t = this.tokens.peek();
+
+        if (t.type === "num") {
+            this.tokens.next();
+            return { type: "num", value: t.value };
+        }
+
+        if (t.type === "id") {
+            const name = this.tokens.next().value;
+
+            if (this.tokens.match("(")) {
+                const args = [];
+                if (!this.tokens.match(")")) {
+                    args.push(this.parseExpression());
+                    while (this.tokens.match(",")) {
+                        args.push(this.parseExpression());
+                    }
+                    this.tokens.expect(")");
+                }
+
+                if (["sin", "cos", "tan", "abs", "sqrt", "floor", "ceil", "min", "max"].includes(name)) {
+                    return {
+                        type: "func",
+                        name,
+                        args
+                    };
+                }
+
+                return {
+                    type: "call_expr",
+                    name,
+                    args
+                };
+            }
+
+            return { type: "var", name };
+        }
+
+        if (this.tokens.match("(")) {
+            const e = this.parseExpression();
+            this.tokens.expect(")");
+            return e;
+        }
+
+        throw new Error(`Bad expression near ${t.type}:${t.value}`);
+    }
+}
+
+//------------------------------------------------
+// PARSER
+//------------------------------------------------
+
+class GrammarParser {
+    constructor(text) {
+        this.tokens = new Tokenizer(text);
+        this.expr = new ExpressionParser(this.tokens);
+        this.ruleOrder = [];
+        this.rules = new Map();
+    }
+
+    parse() {
+        while (!this.tokens.eof()) {
+            if (this.tokens.peek().type === "eof") break;
+            const rule = this.parseRule();
+            if (!this.rules.has(rule.name)) {
+                this.rules.set(rule.name, []);
+                this.ruleOrder.push(rule.name);
+            }
+            this.rules.get(rule.name).push(rule);
+        }
+
+        return {
+            type: "grammar",
+            entry: this.ruleOrder[0] || "Start",
+            order: [...this.ruleOrder],
+            rules: this.rules
+        };
+    }
+
+    parseRule() {
+        const name = this.tokens.expectId();
+
+        let params = [];
+        if (this.tokens.match("(")) {
+            if (!this.tokens.match(")")) {
+                params.push(this.tokens.expectId());
+                while (this.tokens.match(",")) {
+                    params.push(this.tokens.expectId());
+                }
+                this.tokens.expect(")");
+            }
+        }
+
+        let repeatExpr = null;
+        let probability = null;
+
+        // Optional probabilistic prefix/suffix forms
+        // Rule ; 0.3 -> ...
+        // Rule(params) repeat ; 0.3 -> ...
+        if (this.isExpressionStart(this.tokens.peek())) {
+            repeatExpr = this.expr.parseExpression();
+        }
+
+        if (this.tokens.match(";")) {
+            probability = this.expr.parseExpression();
+        }
+
+        this.tokens.expect("->");
+
+        const stages = this.parseRuleStages();
+
+        return {
+            type: "rule",
+            name,
+            params,
+            repeatExpr,
+            probability,
+            stages
+        };
+    }
+
+    parseRuleStages() {
+        const stage0 = this.parseSequence(["|", "eof"]);
+        if (!this.tokens.match("|")) {
+            return {
+                pre: [],
+                main: stage0,
+                post: []
+            };
+        }
+
+        const stage1 = this.parseSequence(["|", "eof"]);
+        if (!this.tokens.match("|")) {
+            return {
+                pre: stage0,
+                main: stage1,
+                post: []
+            };
+        }
+
+        const stage2 = this.parseSequence(["|", "eof"]);
+        return {
+            pre: stage0,
+            main: stage1,
+            post: stage2
+        };
+    }
+
+    parseSequence(stopTypes = ["]", "|", "eof"]) {
+        const list = [];
+
+        while (true) {
+            const t = this.tokens.peek();
+            if (!t) break;
+            if (stopTypes.includes(t.type)) break;
+
+            list.push(this.parseStatement());
+        }
+
+        return list;
+    }
+
+    parseStatement() {
+        const t = this.tokens.peek();
+
+        if (t.type === "[") return this.parseGroup();
+        if (t.type === "?") return this.parseConditional();
+
+        if (t.type === "id") {
+            const v = t.value;
+            if (["T", "S", "A", "R", "DSX", "DSY", "DSZ", "DTX", "DTY", "DTZ"].includes(v)) {
+                return this.parseTransformLike();
+            }
+            if (v === "I") {
+                return this.parseInstance();
+            }
+            return this.parseRuleCallOrVariable();
+        }
+
+        throw new Error(`Unexpected token in statement: ${t.type}:${t.value}`);
+    }
+
+    parseGroup() {
+        this.tokens.expect("[");
+        const seq = this.parseSequence(["]"]);
+        this.tokens.expect("]");
+        return {
+            type: "group",
+            seq
+        };
+    }
+
+    parseConditional() {
+        this.tokens.expect("?");
+        this.tokens.expect("(");
+        const cond = this.expr.parseExpression();
+        this.tokens.expect(")");
+        const ruleMain = this.parseRuleCall();
+        if (this.tokens.match(":")) {
+            const ruleAlt = this.parseRuleCall();
+            return {
+                type: "conditional",
+                cond,
+                ruleMain,
+                ruleAlt
+            };
+        }
+        return {
+            type: "conditional",
+            cond,
+            ruleMain,
+            ruleAlt: null
+        };
+    }
+
+    parseRuleCall() {
+        const name = this.tokens.expectId();
+        const args = [];
+
+        if (this.tokens.match("(")) {
+            if (!this.tokens.match(")")) {
+                args.push(this.expr.parseExpression());
+                while (this.tokens.match(",")) {
+                    args.push(this.expr.parseExpression());
+                }
+                this.tokens.expect(")");
+            }
+        }
+
+        return {
+            type: "rule_call",
+            name,
+            args
+        };
+    }
+
+    parseRuleCallOrVariable() {
+        const nameToken = this.tokens.peek();
+        const name = this.tokens.expectId();
+
+        if (this.tokens.match("(")) {
+            const args = [];
+            if (!this.tokens.match(")")) {
+                args.push(this.expr.parseExpression());
+                while (this.tokens.match(",")) {
+                    args.push(this.expr.parseExpression());
+                }
+                this.tokens.expect(")");
+            }
+
+            return {
+                type: "rule_call",
+                name,
+                args,
+                pos: nameToken.pos
+            };
+        }
+
+        return {
+            type: "rule_call",
+            name,
+            args: [],
+            pos: nameToken.pos
+        };
+    }
+
+    parseTransformLike() {
+        const op = this.tokens.expect("id").value;
+
+        // Optional space before "(" supported by tokenizer naturally.
+        this.tokens.expect("(");
+
+        if (op === "A" || op === "R") {
+            const a = this.expr.parseExpression();
+            const b = this.expr.parseExpression();
+            this.tokens.expect(")");
+            return {
+                type: "transform",
+                op,
+                args: [a, b]
+            };
+        }
+
+        if (["T", "S", "DSX", "DSY", "DSZ", "DTX", "DTY", "DTZ"].includes(op)) {
+            const x = this.expr.parseExpression();
+            const y = this.expr.parseExpression();
+            const z = this.expr.parseExpression();
+            this.tokens.expect(")");
+            return {
+                type: "transform",
+                op,
+                args: [x, y, z]
+            };
+        }
+
+        throw new Error(`Unsupported transform operator ${op}`);
+    }
+
+    parseInstance() {
+        this.tokens.expect("id"); // I
+        this.tokens.expect("(");
+        const primitive = this.tokens.expectId("Expected primitive name");
+        const texture = this.tokens.expectId("Expected texture name");
+        const scaleExpr = this.expr.parseExpression();
+        this.tokens.expect(")");
+
+        return {
+            type: "instance",
+            primitive,
+            texture,
+            scaleExpr
+        };
+    }
+
+    isExpressionStart(t) {
+        if (!t) return false;
+        if (t.type === "num") return true;
+        if (t.type === "id") return true;
+        if (t.type === "(") return true;
+        if (t.type === "-") return true;
+        return false;
+    }
+}
+
+//------------------------------------------------
+// EXPRESSION EVALUATOR
+//------------------------------------------------
+
+class ExprEval {
+    static eval(node, env = {}) {
+        if (!node) return 0;
+
+        switch (node.type) {
+            case "num":
+                return node.value;
+
+            case "var":
+                if (node.name === "pi" || node.name === "PI") return Math.PI;
+                if (node.name === "e" || node.name === "E") return Math.E;
+                return env[node.name] !== undefined ? env[node.name] : 0;
+
+            case "neg":
+                return -ExprEval.eval(node.value, env);
+
+            case "bin": {
+                const a = ExprEval.eval(node.left, env);
+                const b = ExprEval.eval(node.right, env);
+                switch (node.op) {
+                    case "+": return a + b;
+                    case "-": return a - b;
+                    case "*": return a * b;
+                    case "/": return b === 0 ? 0 : a / b;
+                    case "^": return Math.pow(a, b);
+                    default: throw new Error(`Unknown binary op ${node.op}`);
+                }
+            }
+
+            case "compare": {
+                const a = ExprEval.eval(node.left, env);
+                const b = ExprEval.eval(node.right, env);
+                switch (node.op) {
+                    case "<": return a < b ? 1 : 0;
+                    case ">": return a > b ? 1 : 0;
+                    case "<=": return a <= b ? 1 : 0;
+                    case ">=": return a >= b ? 1 : 0;
+                    case "==": return a === b ? 1 : 0;
+                    case "!=": return a !== b ? 1 : 0;
+                    default: throw new Error(`Unknown compare op ${node.op}`);
+                }
+            }
+
+            case "func": {
+                const vals = node.args.map(a => ExprEval.eval(a, env));
+                switch (node.name) {
+                    case "sin": return Math.sin(vals[0] || 0);
+                    case "cos": return Math.cos(vals[0] || 0);
+                    case "tan": return Math.tan(vals[0] || 0);
+                    case "abs": return Math.abs(vals[0] || 0);
+                    case "sqrt": return Math.sqrt(Math.max(0, vals[0] || 0));
+                    case "floor": return Math.floor(vals[0] || 0);
+                    case "ceil": return Math.ceil(vals[0] || 0);
+                    case "min": return Math.min(...vals);
+                    case "max": return Math.max(...vals);
+                    default: throw new Error(`Unknown function ${node.name}`);
+                }
+            }
+
+            case "call_expr":
+                // Expression-side calls default to first arg if unresolved.
+                return env[node.name] !== undefined ? env[node.name] : 0;
+
+            default:
+                throw new Error(`Unknown expression node ${node.type}`);
+        }
+    }
+}
+
+//------------------------------------------------
+// RANDOM
+//------------------------------------------------
+
+class RNG {
+    constructor(seed = 123456789) {
+        this.seed = seed >>> 0;
+    }
+
+    next() {
+        this.seed = (1664525 * this.seed + 1013904223) >>> 0;
+        return this.seed / 0x100000000;
+    }
+}
+
+//------------------------------------------------
+// RUNTIME STATE
+//------------------------------------------------
+
+function makeDefaultState() {
+    return {
+        T: [0, 0, 0],
+        S: [1, 1, 1],
+        A: [0, 0, 0],
+        DSX: [1, 0, 0],
+        DSY: [0, 1, 0],
+        DSZ: [0, 0, 1],
+        DTX: [0, 0, 0],
+        DTY: [0, 0, 0],
+        DTZ: [0, 0, 0]
+    };
+}
+
+function cloneState(s) {
+    return {
+        T: [...s.T],
+        S: [...s.S],
+        A: [...s.A],
+        DSX: [...s.DSX],
+        DSY: [...s.DSY],
+        DSZ: [...s.DSZ],
+        DTX: [...s.DTX],
+        DTY: [...s.DTY],
+        DTZ: [...s.DTZ]
+    };
+}
+
+//------------------------------------------------
+// DEBUG EVENT TYPES
+//------------------------------------------------
+
+const DEBUG_EVENT = {
+    RULE_ENTER: "rule_enter",
+    RULE_EXIT: "rule_exit",
+    STAGE_ENTER: "stage_enter",
+    STAGE_EXIT: "stage_exit",
+    STATEMENT: "statement",
+    INSTANCE: "instance",
+    CONDITIONAL: "conditional",
+    CALL: "call",
+    TRANSFORM: "transform",
+    GROUP_ENTER: "group_enter",
+    GROUP_EXIT: "group_exit"
+};
+
+//------------------------------------------------
+// INTERACTIVE STEPPER / RUNTIME
+//------------------------------------------------
+
+class GrammarRuntime {
+    constructor(grammar, options = {}) {
+        this.grammar = grammar;
+        this.entry = options.entry || grammar.entry || "Start";
+        this.maxSteps = options.maxSteps || 100000;
+        this.rng = new RNG(options.seed || 123456789);
+        this.output = [];
+        this.debug = [];
+        this.stepCount = 0;
+        this.finished = false;
+
+        this.callStack = [{
+            kind: "rule_frame",
+            ruleName: this.entry,
+            env: {},
+            state: makeDefaultState(),
+            phase: "enter"
+        }];
+    }
+
+    log(type, payload = {}) {
+        const evt = {
+            step: this.stepCount,
+            type,
+            ...payload
+        };
+        this.debug.push(evt);
+        return evt;
+    }
+
+    getRuleAlternatives(name) {
+        return this.grammar.rules.get(name) || [];
+    }
+
+    chooseRuleVariant(name, env) {
+        const alts = this.getRuleAlternatives(name);
+        if (!alts.length) {
+            throw new Error(`Rule not found: ${name}`);
+        }
+
+        if (alts.length === 1) return alts[0];
+
+        let total = 0;
+        const weighted = alts.map(r => {
+            const w = r.probability ? Math.max(0, Number(ExprEval.eval(r.probability, env))) : 1;
+            total += w;
+            return { rule: r, weight: w };
+        });
+
+        if (total <= 0) return alts[0];
+
+        let pick = this.rng.next() * total;
+        for (const item of weighted) {
+            pick -= item.weight;
+            if (pick <= 0) return item.rule;
+        }
+
+        return weighted[weighted.length - 1].rule;
+    }
+
+    invokeRule(name, args, parentEnv, currentState) {
+        const env = Object.create(parentEnv || null);
+        const variant = this.chooseRuleVariant(name, env);
+
+        for (let i = 0; i < variant.params.length; i++) {
+            env[variant.params[i]] = args[i] !== undefined ? args[i] : 0;
+        }
+
+        let repeat = 1;
+        if (variant.repeatExpr) {
+            repeat = Math.max(0, Math.floor(ExprEval.eval(variant.repeatExpr, env)));
+        }
+
+        this.callStack.push({
+            kind: "rule_exec",
+            rule: variant,
+            ruleName: name,
+            env,
+            state: cloneState(currentState),
+            repeat,
+            repeatIndex: 0,
+            phase: "enter"
+        });
+    }
+
+    step() {
+        if (this.finished) {
+            return { done: true, event: null };
+        }
+
+        if (this.stepCount++ > this.maxSteps) {
+            throw new Error(`Max step limit exceeded (${this.maxSteps})`);
+        }
+
+        while (this.callStack.length) {
+            const frame = this.callStack[this.callStack.length - 1];
+
+            if (frame.kind === "rule_frame") {
+                this.callStack.pop();
+                this.invokeRule(frame.ruleName, [], frame.env || {}, frame.state);
+                continue;
+            }
+
+            if (frame.kind === "rule_exec") {
+                if (frame.phase === "enter") {
+                    frame.phase = "repeat_check";
+                    return {
+                        done: false,
+                        event: this.log(DEBUG_EVENT.RULE_ENTER, {
+                            rule: frame.rule.name,
+                            env: snapshotEnv(frame.env),
+                            repeat: frame.repeat
+                        })
+                    };
+                }
+
+                if (frame.phase === "repeat_check") {
+                    if (frame.repeatIndex >= frame.repeat) {
+                        this.callStack.pop();
+                        return {
+                            done: false,
+                            event: this.log(DEBUG_EVENT.RULE_EXIT, {
+                                rule: frame.rule.name
+                            })
+                        };
+                    }
+
+                    frame.phase = "pre_stage";
+                    continue;
+                }
+
+                if (frame.phase === "pre_stage") {
+                    frame.phase = "main_stage";
+                    this.callStack.push(makeStageFrame("pre", frame.rule.stages.pre, frame.env, frame.state));
+                    return {
+                        done: false,
+                        event: this.log(DEBUG_EVENT.STAGE_ENTER, {
+                            rule: frame.rule.name,
+                            stage: "pre",
+                            repeatIndex: frame.repeatIndex
+                        })
+                    };
+                }
+
+                if (frame.phase === "main_stage") {
+                    frame.phase = "post_stage";
+                    this.callStack.push(makeStageFrame("main", frame.rule.stages.main, frame.env, frame.state));
+                    return {
+                        done: false,
+                        event: this.log(DEBUG_EVENT.STAGE_ENTER, {
+                            rule: frame.rule.name,
+                            stage: "main",
+                            repeatIndex: frame.repeatIndex
+                        })
+                    };
+                }
+
+                if (frame.phase === "post_stage") {
+                    frame.phase = "repeat_done";
+                    this.callStack.push(makeStageFrame("post", frame.rule.stages.post, frame.env, frame.state));
+                    return {
+                        done: false,
+                        event: this.log(DEBUG_EVENT.STAGE_ENTER, {
+                            rule: frame.rule.name,
+                            stage: "post",
+                            repeatIndex: frame.repeatIndex
+                        })
+                    };
+                }
+
+                if (frame.phase === "repeat_done") {
+                    frame.repeatIndex++;
+                    frame.phase = "repeat_check";
+                    continue;
+                }
+            }
+
+            if (frame.kind === "stage") {
+                if (frame.phase === "enter") {
+                    frame.phase = "run";
+                    continue;
+                }
+
+                if (frame.phase === "run") {
+                    if (frame.index >= frame.seq.length) {
+                        this.callStack.pop();
+                        return {
+                            done: false,
+                            event: this.log(DEBUG_EVENT.STAGE_EXIT, {
+                                stage: frame.stageName
+                            })
+                        };
+                    }
+
+                    const stmt = frame.seq[frame.index++];
+                    this.callStack.push({
+                        kind: "statement",
+                        stmt,
+                        env: frame.env,
+                        state: frame.state,
+                        phase: "enter"
+                    });
+                    continue;
+                }
+            }
+
+            if (frame.kind === "statement") {
+                const stmt = frame.stmt;
+
+                if (frame.phase === "enter") {
+                    this.callStack.pop();
+
+                    switch (stmt.type) {
+                        case "group": {
+                            const childState = cloneState(frame.state);
+                            this.callStack.push({
+                                kind: "group",
+                                seq: stmt.seq,
+                                env: frame.env,
+                                state: childState,
+                                phase: "enter",
+                                index: 0
+                            });
+                            return {
+                                done: false,
+                                event: this.log(DEBUG_EVENT.GROUP_ENTER, {})
+                            };
+                        }
+
+                        case "transform": {
+                            this.applyTransform(stmt, frame.env, frame.state);
+                            return {
+                                done: false,
+                                event: this.log(DEBUG_EVENT.TRANSFORM, {
+                                    op: stmt.op,
+                                    values: stmt.args.map(a => ExprEval.eval(a, frame.env)),
+                                    state: snapshotState(frame.state)
+                                })
+                            };
+                        }
+
+                        case "instance": {
+                            const inst = this.emitInstance(stmt, frame.env, frame.state);
+                            return {
+                                done: false,
+                                event: this.log(DEBUG_EVENT.INSTANCE, inst)
+                            };
+                        }
+
+                        case "conditional": {
+                            const condVal = !!ExprEval.eval(stmt.cond, frame.env);
+                            const call = condVal ? stmt.ruleMain : stmt.ruleAlt;
+                            this.log(DEBUG_EVENT.CONDITIONAL, {
+                                result: condVal,
+                                hasAlt: !!stmt.ruleAlt
+                            });
+                            if (call) {
+                                const argVals = call.args.map(a => ExprEval.eval(a, frame.env));
+                                this.callStack.push({
+                                    kind: "call_deferred",
+                                    call,
+                                    env: frame.env,
+                                    state: frame.state,
+                                    args: argVals
+                                });
+                            }
+                            return {
+                                done: false,
+                                event: this.debug[this.debug.length - 1]
+                            };
+                        }
+
+                        case "rule_call": {
+                            const argVals = stmt.args.map(a => ExprEval.eval(a, frame.env));
+                            this.callStack.push({
+                                kind: "call_deferred",
+                                call: stmt,
+                                env: frame.env,
+                                state: frame.state,
+                                args: argVals
+                            });
+                            return {
+                                done: false,
+                                event: this.log(DEBUG_EVENT.CALL, {
+                                    rule: stmt.name,
+                                    args: argVals
+                                })
+                            };
+                        }
+
+                        default:
+                            throw new Error(`Unknown statement type ${stmt.type}`);
+                    }
+                }
+            }
+
+            if (frame.kind === "call_deferred") {
+                this.callStack.pop();
+                this.invokeRule(frame.call.name, frame.args, frame.env, frame.state);
+                continue;
+            }
+
+            if (frame.kind === "group") {
+                if (frame.phase === "enter") {
+                    frame.phase = "run";
+                    continue;
+                }
+
+                if (frame.phase === "run") {
+                    if (frame.index >= frame.seq.length) {
+                        this.callStack.pop();
+                        return {
+                            done: false,
+                            event: this.log(DEBUG_EVENT.GROUP_EXIT, {})
+                        };
+                    }
+
+                    const stmt = frame.seq[frame.index++];
+                    this.callStack.push({
+                        kind: "statement",
+                        stmt,
+                        env: frame.env,
+                        state: frame.state,
+                        phase: "enter"
+                    });
+                    continue;
+                }
+            }
+        }
+
+        this.finished = true;
+        return { done: true, event: null };
+    }
+
+    runAll() {
+        while (!this.finished) {
+            this.step();
+        }
+        return this.output;
+    }
+
+    applyTransform(stmt, env, state) {
+        const vals = stmt.args.map(a => ExprEval.eval(a, env));
+
+        switch (stmt.op) {
+            case "T":
+                state.T[0] += vals[0];
+                state.T[1] += vals[1];
+                state.T[2] += vals[2];
+                break;
+
+            case "S":
+                state.S[0] *= vals[0];
+                state.S[1] *= vals[1];
+                state.S[2] *= vals[2];
+                break;
+
+            case "A":
+            case "R": {
+                const angle = vals[0];
+                const axis = Math.floor(vals[1]);
+                if (axis >= 0 && axis <= 2) state.A[axis] += angle;
+                break;
+            }
+
+            case "DSX": state.DSX = vals; break;
+            case "DSY": state.DSY = vals; break;
+            case "DSZ": state.DSZ = vals; break;
+            case "DTX": state.DTX = vals; break;
+            case "DTY": state.DTY = vals; break;
+            case "DTZ": state.DTZ = vals; break;
+
+            default:
+                throw new Error(`Unknown transform op ${stmt.op}`);
+        }
+    }
+
+    emitInstance(stmt, env, state) {
+        const scale = ExprEval.eval(stmt.scaleExpr, env);
+        const item = {
+            type: "instance",
+            primitive: stmt.primitive,
+            texture: stmt.texture,
+            scale,
+            state: snapshotState(state)
+        };
+        this.output.push(item);
+        return item;
+    }
+
+    getDebugLog() {
+        return [...this.debug];
+    }
+
+    getOutput() {
+        return [...this.output];
+    }
+}
+
+function makeStageFrame(stageName, seq, env, state) {
+    return {
+        kind: "stage",
+        stageName,
+        seq: seq || [],
+        env,
+        state,
+        index: 0,
+        phase: "enter"
+    };
+}
+
+function snapshotEnv(env) {
+    const out = {};
+    if (!env) return out;
+    for (const k in env) {
+        out[k] = env[k];
+    }
+    return out;
+}
+
+function snapshotState(state) {
+    return cloneState(state);
+}
+
+//------------------------------------------------
+// DEBUGGER WRAPPER
+//------------------------------------------------
+
+class GrammarDebugger {
+    constructor(runtime) {
+        this.runtime = runtime;
+    }
+
+    step() {
+        return this.runtime.step();
+    }
+
+    run(steps = Infinity) {
+        const events = [];
+        let count = 0;
+        while (!this.runtime.finished && count < steps) {
+            const res = this.runtime.step();
+            if (res.event) events.push(res.event);
+            count++;
+        }
+        return {
+            done: this.runtime.finished,
+            events,
+            output: this.runtime.getOutput()
+        };
+    }
+
+    runAll() {
+        return {
+            output: this.runtime.runAll(),
+            debug: this.runtime.getDebugLog()
+        };
+    }
+
+    state() {
+        return {
+            finished: this.runtime.finished,
+            stepCount: this.runtime.stepCount,
+            outputCount: this.runtime.output.length,
+            stackDepth: this.runtime.callStack.length
+        };
+    }
+}
+
+//------------------------------------------------
+// COMPILER API
+//------------------------------------------------
+
+export function parseGrammar(text) {
+    const parser = new GrammarParser(text);
+    return parser.parse();
+}
+
+export function createRuntime(textOrGrammar, options = {}) {
+    const grammar = typeof textOrGrammar === "string"
+        ? parseGrammar(textOrGrammar)
+        : textOrGrammar;
+    return new GrammarRuntime(grammar, options);
+}
+
+export function createDebugger(textOrGrammar, options = {}) {
+    const runtime = createRuntime(textOrGrammar, options);
+    return new GrammarDebugger(runtime);
+}
+
+export function compileGrammar(text, options = {}) {
+    const grammar = parseGrammar(text);
+    const runtime = new GrammarRuntime(grammar, options);
+    return {
+        grammar,
+        runtime,
+        run(startRule = undefined) {
+            if (startRule && startRule !== runtime.entry) {
+                runtime.entry = startRule;
+                runtime.callStack = [{
+                    kind: "rule_frame",
+                    ruleName: runtime.entry,
+                    env: {},
+                    state: makeDefaultState(),
+                    phase: "enter"
+                }];
+                runtime.output = [];
+                runtime.debug = [];
+                runtime.stepCount = 0;
+                runtime.finished = false;
+            }
+            return runtime.runAll();
+        }
+    };
+}
+
+//------------------------------------------------
+// OPTIONAL DEFAULT EXPORT
+//------------------------------------------------
+
+export default {
+    parseGrammar,
+    createRuntime,
+    createDebugger,
+    compileGrammar
+};

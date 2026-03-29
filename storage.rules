@@ -1,0 +1,10 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Cloud Storage writes are performed by the PHP Admin SDK during migration and file saves.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "progen3d-site",
+  "private": true,
+  "scripts": {
+    "firebase:rules": "firebase deploy --only firestore:rules,storage",
+    "firebase:rules:project": "firebase deploy --project progen3d-f0dfa --only firestore:rules,storage",
+    "firebase:use": "firebase use progen3d-f0dfa",
+    "test:syntax": "node assets/editor/js/check-syntax.js",
+    "test:grammar": "node assets/editor/js/core/grammar-smoke.js",
+    "test:regressions": "node assets/editor/js/regression-smoke.js",
+    "test:pages": "node assets/editor/js/page-smoke.js",
+    "test:buildings": "node assets/designer/building-generator-smoke.js"
+  },
+  "devDependencies": {
+    "firebase-tools": "13.35.1"
+  }
+}

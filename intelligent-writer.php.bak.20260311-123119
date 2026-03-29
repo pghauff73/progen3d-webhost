@@ -1,0 +1,93 @@
+<?php
+require __DIR__ . '/includes/bootstrap.php';
+require_login();
+$extraHead = '<meta name="csrf-token" content="' . e(csrf_token()) . '">';
+render_header('Intelligent Writer', 'intelligent-writer', ['extra_head' => $extraHead]);
+$excerpt = site_intelligent_writer_reference_excerpt();
+?>
+<main class="site-shell page-shell writer-page intelligent-writer-page">
+  <section class="page-heading writer-hero">
+    <div>
+      <span class="page-kicker">Prompt-to-grammar studio</span>
+      <h1>Intelligent Writer</h1>
+      <p class="page-intro">Describe the structure you want in plain language. Intelligent Writer first researches equations, proportions, and the main parts implied by your description, then feeds that research into the final grammar-writing call together with the live syntax documentation, texture presets, and structural archetype reference. The returned titled drafts are grammar-first output: the research stays behind the scenes and the visible draft result is just the executable grammar, still passing through the same parser-check, retry, cube count, and editor handoff workflow as the regular Writer page. The hidden reference now prioritises the current rule forms, conditional syntax, segmented pre|main|post bodies, and rule-body-only ranged variables.</p>
+    </div>
+    <div class="panel panel-quiet writer-summary">
+      <h2>How it works</h2>
+      <ul class="doc-bullets">
+        <?php foreach ($excerpt as $item): ?>
+          <li><?= e($item) ?></li>
+        <?php endforeach; ?>
+      </ul>
+    </div>
+  </section>
+
+  <section class="panel writer-controls intelligent-writer-controls">
+    <div class="intelligent-writer-prompt">
+      <label for="intelligentWriterPrompt">OpenAI prompt</label>
+      <textarea id="intelligentWriterPrompt" class="text-input intelligent-writer-textarea" rows="8" placeholder="Example: Design a radial pavilion lamp with a terraced base, upward canopy ribs, layered shade parts, and frosted glass accents. Research equations for the base profile, canopy flare, and part proportions, then assemble them as joined cube grammar that feels architectural rather than organic."></textarea>
+    </div>
+    <div class="writer-controls__grid intelligent-writer-grid">
+      <label>Drafts
+        <select id="intelligentWriterCount" class="select-input">
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3" selected>3</option>
+          <option value="4">4</option>
+        </select>
+      </label>
+      <label>Depth
+        <select id="intelligentWriterDepth" class="select-input">
+          <option value="random" selected>Random</option>
+          <option value="4">4 levels</option>
+          <option value="5">5 levels</option>
+          <option value="6">6 levels</option>
+          <option value="7">7 levels</option>
+          <option value="8">8 levels</option>
+        </select>
+      </label>
+      <label>Cube join
+        <select id="intelligentWriterOverlap" class="select-input">
+          <option value="loose">Loose</option>
+          <option value="joined" selected>Joined</option>
+          <option value="fused">Fused</option>
+        </select>
+      </label>
+      <div class="writer-controls__actions">
+        <button id="intelligentWriterGenerateBtn" class="btn btn-primary" type="button">Generate drafts</button>
+        <button id="intelligentWriterPromptExampleBtn" class="btn btn-secondary" type="button">Use example prompt</button>
+      </div>
+    </div>
+    <p class="writer-note">Intelligent Writer uses a server-side two-stage OpenAI flow so the API key stays off the page. Each draft first gets shape-equation and part research, then a final grammar call uses that research together with the docs/reference context to return grammar-only output. The prompt context now explicitly prefers the current rule-header syntax, current conditional syntax, and in-body R / R* declarations. Returned drafts are parser-checked locally. Invalid drafts regenerate every 10 seconds with the parser error fed back into the next OpenAI request, and each draft stops retrying after 10 parser errors.</p>
+  </section>
+
+  <section class="writer-results">
+    <div class="section-heading section-heading--split section-heading--simple">
+      <div>
+        <span class="page-kicker">Generated set</span>
+        <h2>Prompt-driven grammar drafts</h2>
+      </div>
+      <div class="help-links">
+        <a class="btn btn-secondary btn-sm" href="docs.php">Open docs</a>
+        <a class="btn btn-secondary btn-sm" href="reference.php">Open reference</a>
+        <a class="btn btn-secondary btn-sm" href="editor.php">Open editor</a>
+      </div>
+    </div>
+    <div id="intelligentWriterResults" class="writer-results-grid"></div>
+  </section>
+</main>
+<script>
+window.intelligentWriterConfig = {
+  csrfToken: <?= json_encode(csrf_token()) ?>,
+  storageKey: 'p3d_writer_draft_v1'
+};
+</script>
+<script src="assets/editor/js/core/helpers.js"></script>
+<script src="assets/editor/js/core/scope-context.js"></script>
+<script src="assets/editor/js/core/math-eval.js"></script>
+<script src="assets/editor/js/core/variables.js"></script>
+<script src="assets/editor/js/core/substitution.js"></script>
+<script src="assets/editor/js/core/lexer-token.js"></script>
+<script src="assets/editor/js/core/grammar.js"></script>
+<script src="assets/intelligent-writer.js"></script>
+<?php render_footer(); ?>

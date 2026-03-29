@@ -1,0 +1,469 @@
+<?php
+require __DIR__ . '/../includes/bootstrap.php';
+header('Content-Type: application/json; charset=UTF-8');
+
+require_login();
+verify_csrf();
+
+function iw_json_body(): array
+{
+    $raw = file_get_contents('php://input');
+    if (!$raw) {
+        return [];
+    }
+    $data = json_decode($raw, true);
+    return is_array($data) ? $data : [];
+}
+
+function iw_json_response(array $data, int $status = 200): void
+{
+    http_response_code($status);
+    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+function iw_openai_request(array $payload): array
+{
+    if (!function_exists('curl_init')) {
+        iw_json_response(['ok' => false, 'error' => 'PHP cURL is required for Intelligent Writer. Enable the cURL extension on the server.'], 500);
+    }
+
+    $apiKey = getenv('OPENAI_API_KEY') ?: ($_ENV['OPENAI_API_KEY'] ?? '');
+    if (!$apiKey) {
+        iw_json_response([
+            'ok' => false,
+            'error' => 'OPENAI_API_KEY is not configured on the server. Add it as an environment variable before using Intelligent Writer.'
+        ], 503);
+    }
+
+    $ch = curl_init('https://api.openai.com/v1/chat/completions');
+    if (!$ch) {
+        iw_json_response(['ok' => false, 'error' => 'Could not initialize the OpenAI request.'], 500);
+    }
+
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_HTTPHEADER => [
+            'Authorization: Bearer ' . $apiKey,
+            'Content-Type: application/json',
+        ],
+        CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 150,
+    ]);
+
+    $response = curl_exec($ch);
+    $errno = curl_errno($ch);
+    $error = curl_error($ch);
+    $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    curl_close($ch);
+
+    if ($errno) {
+        iw_json_response(['ok' => false, 'error' => 'OpenAI request failed: ' . $error], 502);
+    }
+
+    $data = json_decode((string) $response, true);
+    if (!is_array($data)) {
+        iw_json_response(['ok' => false, 'error' => 'OpenAI returned a non-JSON response.'], 502);
+    }
+
+    if ($status >= 400) {
+        $message = $data['error']['message'] ?? 'OpenAI returned an error.';
+        iw_json_response(['ok' => false, 'error' => $message], $status);
+    }
+
+    return $data;
+}
+
+function iw_response_schema(string $name, array $schema): array
+{
+    return [
+        'type' => 'json_schema',
+        'json_schema' => [
+            'name' => $name,
+            'strict' => true,
+            'schema' => $schema,
+        ],
+    ];
+}
+
+function iw_request_structured(string $model, array $messages, string $schemaName, array $schema, float $temperature = 0.7): array
+{
+    $payload = [
+        'model' => $model,
+        'messages' => $messages,
+        'temperature' => $temperature,
+        'response_format' => iw_response_schema($schemaName, $schema),
+    ];
+    $data = iw_openai_request($payload);
+    $content = $data['choices'][0]['message']['content'] ?? '';
+    if (!is_string($content) || trim($content) === '') {
+        iw_json_response(['ok' => false, 'error' => 'OpenAI returned an empty completion.'], 502);
+    }
+    $result = json_decode($content, true);
+    if (!is_array($result)) {
+        iw_json_response(['ok' => false, 'error' => 'OpenAI returned invalid structured output.'], 502);
+    }
+    return $result;
+}
+
+function iw_string_list($value): array
+{
+    if (!is_array($value)) {
+        return [];
+    }
+    $items = [];
+    foreach ($value as $item) {
+        $text = trim((string) $item);
+        if ($text !== '') {
+            $items[] = $text;
+        }
+    }
+    return array_values($items);
+}
+
+function iw_detail_string($value): string
+{
+    if ($value === null) {
+        return '';
+    }
+    if (is_bool($value)) {
+        return $value ? 'true' : 'false';
+    }
+    return trim((string) $value);
+}
+
+$body = iw_json_body();
+$prompt = trim((string) ($body['prompt'] ?? ''));
+if ($prompt === '') {
+    iw_json_response(['ok' => false, 'error' => 'Prompt text is required.'], 422);
+}
+
+$depth = trim((string) ($body['depth'] ?? 'random'));
+$overlap = trim((string) ($body['overlap'] ?? 'joined'));
+$attempt = max(1, (int) ($body['attempt'] ?? 1));
+$variant = max(1, (int) ($body['variant'] ?? 1));
+$previousError = trim((string) ($body['previous_error'] ?? ''));
+$previousErrorDetails = is_array($body['previous_error_details'] ?? null) ? $body['previous_error_details'] : [];
+$previousGrammar = trim((string) ($body['previous_grammar'] ?? ''));
+$model = trim((string) (getenv('OPENAI_MODEL') ?: ($_ENV['OPENAI_MODEL'] ?? 'gpt-5.4')));
+
+$referenceText = site_intelligent_writer_reference_text();
+$overlapGuidance = [
+    'loose' => 'Use a light 5% to 10% overlap between adjacent cubes.',
+    'joined' => 'Use a clear 12% to 22% overlap between adjacent cubes so the structure reads as joined.',
+    'fused' => 'Use strong 22% to 35% overlap so the structure reads as fused and sculptural.',
+];
+$depthGuidance = $depth === 'random'
+    ? 'Choose a sensible depth between 4 and 8 levels based on the prompt.'
+    : 'Use an exact structure depth of ' . (int) $depth . ' main levels if the design allows it.';
+$joinGuidance = $overlapGuidance[$overlap] ?? $overlapGuidance['joined'];
+
+$researchSchema = [
+    'type' => 'object',
+    'additionalProperties' => false,
+    'properties' => [
+        'shape_summary' => ['type' => 'string'],
+        'research_summary' => ['type' => 'string'],
+        'primary_form_equations' => [
+            'type' => 'array',
+            'items' => ['type' => 'string']
+        ],
+        'part_breakdown' => [
+            'type' => 'array',
+            'items' => [
+                'type' => 'object',
+                'additionalProperties' => false,
+                'properties' => [
+                    'name' => ['type' => 'string'],
+                    'role' => ['type' => 'string'],
+                    'shape_equations' => [
+                        'type' => 'array',
+                        'items' => ['type' => 'string']
+                    ],
+                    'grammar_strategy' => ['type' => 'string'],
+                ],
+                'required' => ['name', 'role', 'shape_equations', 'grammar_strategy']
+            ]
+        ],
+        'assembly_plan' => [
+            'type' => 'array',
+            'items' => ['type' => 'string']
+        ],
+        'recommended_archetypes' => [
+            'type' => 'array',
+            'items' => ['type' => 'string']
+        ],
+        'equation_to_grammar_notes' => [
+            'type' => 'array',
+            'items' => ['type' => 'string']
+        ],
+    ],
+    'required' => ['shape_summary', 'research_summary', 'primary_form_equations', 'part_breakdown', 'assembly_plan', 'recommended_archetypes', 'equation_to_grammar_notes']
+];
+
+$researchSystemPrompt = <<<TXT
+You are a geometric research assistant for the ProGen3D Intelligent Writer.
+
+Your job is to study a design description and infer the mathematical and structural shape logic that best explains it.
+
+RESEARCH GOALS
+- Infer equations, proportional relationships, profiles, curves, radial laws, taper laws, and repetition laws that fit the described shape.
+- Identify the major parts that make up the described object.
+- For each part, describe the part's role, the best-fit equations or proportional rules, and how that part should be built in executable cube-based grammar.
+- Produce assembly guidance so the final grammar can assemble the parts into one coherent structure.
+- Keep the research concise and practical for grammar generation.
+
+RULES
+- Do not write final grammar.
+- Do not use unsupported pseudocode as if it were executable grammar.
+- Equations may be approximate and descriptive, but they should be concrete enough to guide grammar structure.
+- Prefer equations and ratios that can be approximated with ranges, helper rules, repeated transforms, and cube assemblies.
+TXT;
+
+$researchUserPrompt = <<<TXT
+User design request:
+{$prompt}
+
+Generation settings:
+- Variant: {$variant}
+- Attempt: {$attempt}
+- Depth preference: {$depthGuidance}
+- Join preference: {$joinGuidance}
+
+Research the shape itself and the parts that make up the shape. Infer:
+- overall form equations
+- part-level equations and proportions
+- assembly order for the parts
+- which archetypes from the site reference best match the described form
+TXT;
+
+$research = iw_request_structured(
+    $model,
+    [
+        ['role' => 'system', 'content' => $researchSystemPrompt],
+        ['role' => 'user', 'content' => $researchUserPrompt],
+    ],
+    'progen3d_intelligent_writer_research',
+    $researchSchema,
+    0.45
+);
+
+$shapeSummary = trim((string) ($research['shape_summary'] ?? ''));
+$researchSummary = trim((string) ($research['research_summary'] ?? ''));
+$primaryFormEquations = iw_string_list($research['primary_form_equations'] ?? []);
+$recommendedArchetypes = iw_string_list($research['recommended_archetypes'] ?? []);
+$assemblyPlan = iw_string_list($research['assembly_plan'] ?? []);
+$equationNotes = iw_string_list($research['equation_to_grammar_notes'] ?? []);
+$partBreakdown = [];
+foreach (($research['part_breakdown'] ?? []) as $part) {
+    if (!is_array($part)) {
+        continue;
+    }
+    $partBreakdown[] = [
+        'name' => trim((string) ($part['name'] ?? 'Part')),
+        'role' => trim((string) ($part['role'] ?? '')),
+        'shape_equations' => iw_string_list($part['shape_equations'] ?? []),
+        'grammar_strategy' => trim((string) ($part['grammar_strategy'] ?? '')),
+    ];
+}
+
+$partLines = [];
+foreach ($partBreakdown as $index => $part) {
+    $partLines[] = 'Part ' . ($index + 1) . ': ' . ($part['name'] ?: 'Part');
+    if ($part['role'] !== '') {
+        $partLines[] = '  role: ' . $part['role'];
+    }
+    if (!empty($part['shape_equations'])) {
+        $partLines[] = '  equations: ' . implode(' | ', $part['shape_equations']);
+    }
+    if ($part['grammar_strategy'] !== '') {
+        $partLines[] = '  grammar strategy: ' . $part['grammar_strategy'];
+    }
+}
+
+$equationBlock = implode("\n", array_map(static function ($item) {
+    return '- ' . $item;
+}, $primaryFormEquations));
+$assemblyBlock = implode("\n", array_map(static function ($item) {
+    return '- ' . $item;
+}, $assemblyPlan));
+$notesBlock = implode("\n", array_map(static function ($item) {
+    return '- ' . $item;
+}, $equationNotes));
+$partBlock = implode("\n", $partLines);
+$recommendedBlock = implode(', ', $recommendedArchetypes);
+$previousErrorParts = [];
+if ($previousError !== '') {
+    $previousErrorParts[] = 'Summary: ' . $previousError;
+}
+$prevName = iw_detail_string($previousErrorDetails['name'] ?? '');
+$prevMessage = iw_detail_string($previousErrorDetails['message'] ?? '');
+$prevLine = iw_detail_string($previousErrorDetails['line'] ?? '');
+$prevCol = iw_detail_string($previousErrorDetails['col'] ?? '');
+$prevSource = iw_detail_string($previousErrorDetails['source_line'] ?? '');
+$prevSnippet = iw_detail_string($previousErrorDetails['snippet'] ?? '');
+if ($prevName !== '') {
+    $previousErrorParts[] = 'Error type: ' . $prevName;
+}
+if ($prevMessage !== '') {
+    $previousErrorParts[] = 'Message: ' . $prevMessage;
+}
+if ($prevLine !== '' || $prevCol !== '') {
+    $previousErrorParts[] = 'Location: line ' . ($prevLine !== '' ? $prevLine : '?') . ', col ' . ($prevCol !== '' ? $prevCol : '?');
+}
+if ($prevSource !== '') {
+    $previousErrorParts[] = 'Source line: ' . $prevSource;
+}
+if ($prevSnippet !== '') {
+    $previousErrorParts[] = "Snippet:\n" . $prevSnippet;
+}
+$previousErrorBlock = implode("\n", $previousErrorParts);
+$previousGrammarBlock = $previousGrammar !== '' ? $previousGrammar : '(none)';
+
+$systemPrompt = <<<TXT
+You are Intelligent Writer for the ProGen3D live site.
+
+Write one titled ProGen3D grammar draft that the current live parser can execute.
+
+NON-NEGOTIABLE OUTPUT RULES
+- Return JSON only matching the schema.
+- The grammar field must contain grammar text only.
+- Do not put commentary, markdown fences, headings, research notes, bullet lists, or explanations inside the grammar field.
+- The grammar must be executable by the current live parser, not pseudocode.
+- Use only grammar syntax, transforms, variables, materials, and instances described in the supplied site reference.
+- Do not use unsupported pseudocode operators such as RotateAroundAxis, TranslateRadial, OrientRadially, TranslateAlongAxis, PlaneTranslate, CurveSample, CurveOrient, MirrorPerpToAxis, or ExpandLSystem.
+- Adapt archetype ideas into executable helper rules using the current rule forms, grouped blocks, T, S, A, rule-body R/R* variables, conditionals, and cube instances.
+- Use cube-based geometry only: Cube, CubeX, CubeY, CubeZ.
+- Include a visible base or plinth under the structure.
+- Use named texture presets from the supplied reference.
+- Generate a concise, strong title.
+- Keep the grammar readable and structured into helper rules.
+- Prefer valid executable output over ambitious but risky syntax.
+- If parser feedback is supplied, repair that exact failure first before making any stylistic changes.
+- Use the previous failing grammar and the reported line/column/snippet to localize and fix the broken rule or token.
+
+DESIGN PRIORITIES
+- Follow the user's prompt closely.
+- Use the researched equations and part breakdown to shape the form.
+- If ranged variables are needed, declare them inside the rule body that uses them, not as standalone top-level lines.
+- Assemble the final structure from explicit parts instead of one undifferentiated mass.
+- Draw on the structural archetype library for motif selection and composition.
+- Produce coherent, scene-worthy forms with repeated structure and visual hierarchy.
+- Keep spacing parser-safe and operator-safe, and prefer the current rule-header syntax when resolved vars or repeat expressions are needed.
+- Favor overlapping/joined cubes according to the requested join mode.
+
+SITE REFERENCE CONTEXT
+{$referenceText}
+TXT;
+
+$userPrompt = <<<TXT
+User design request:
+{$prompt}
+
+Generation settings:
+- Variant: {$variant}
+- Attempt: {$attempt}
+- Depth preference: {$depthGuidance}
+- Join preference: {$joinGuidance}
+
+SHAPE RESEARCH SUMMARY
+{$shapeSummary}
+
+EQUATION RESEARCH
+{$researchSummary}
+
+PRIMARY FORM EQUATIONS
+{$equationBlock}
+
+PART BREAKDOWN AND PART SHAPE EQUATIONS
+{$partBlock}
+
+ASSEMBLY PLAN
+{$assemblyBlock}
+
+EQUATION TO GRAMMAR NOTES
+{$notesBlock}
+
+RECOMMENDED ARCHETYPES
+{$recommendedBlock}
+
+PREVIOUS PARSER FEEDBACK
+{$previousErrorBlock}
+
+PREVIOUS FAILING GRAMMAR
+{$previousGrammarBlock}
+
+If there was a previous parser error, correct for it while preserving the design intent. Use the exact failing line/column context and do not repeat the same syntax mistake.
+
+FINAL WRITING INSTRUCTIONS
+- Build explicit helper rules for the major parts.
+- Assemble those parts in Start or a small number of top-level assembly rules.
+- Use the shape equations as proportions, taper logic, radial spacing logic, stacked spacing logic, or ring/spoke spacing logic.
+- Keep the draft executable with the live parser.
+
+Return fields:
+- title
+- grammar
+- primary_archetype
+- secondary_archetype
+- family_signature
+- motifs
+TXT;
+
+$draftSchema = [
+    'type' => 'object',
+    'additionalProperties' => false,
+    'properties' => [
+        'title' => ['type' => 'string'],
+        'grammar' => ['type' => 'string'],
+        'primary_archetype' => ['type' => 'string'],
+        'secondary_archetype' => ['type' => 'string'],
+        'family_signature' => ['type' => 'string'],
+        'motifs' => [
+            'type' => 'array',
+            'items' => ['type' => 'string']
+        ],
+    ],
+    'required' => ['title', 'grammar', 'primary_archetype', 'secondary_archetype', 'family_signature', 'motifs']
+];
+
+$result = iw_request_structured(
+    $model,
+    [
+        ['role' => 'system', 'content' => $systemPrompt],
+        ['role' => 'user', 'content' => $userPrompt],
+    ],
+    'progen3d_intelligent_writer_draft',
+    $draftSchema,
+    0.9
+);
+
+$result['title'] = trim((string) ($result['title'] ?? 'Intelligent grammar draft'));
+$result['grammar'] = trim((string) ($result['grammar'] ?? ''));
+$result['primary_archetype'] = trim((string) ($result['primary_archetype'] ?? 'Hybrid'));
+$result['secondary_archetype'] = trim((string) ($result['secondary_archetype'] ?? 'Support'));
+$result['family_signature'] = trim((string) ($result['family_signature'] ?? 'Prompt-driven hybrid'));
+$result['motifs'] = iw_string_list($result['motifs'] ?? []);
+$result['grammar'] = preg_replace('/^```(?:[A-Za-z0-9_-]+)?\s*|\s*```$/m', '', $result['grammar']);
+$result['grammar'] = trim((string) $result['grammar']);
+if ($result['grammar'] === '') {
+    iw_json_response(['ok' => false, 'error' => 'OpenAI did not return grammar text.'], 502);
+}
+
+$result['research'] = [
+    'shape_summary' => $shapeSummary,
+    'research_summary' => $researchSummary,
+    'primary_form_equations' => $primaryFormEquations,
+    'recommended_archetypes' => $recommendedArchetypes,
+    'assembly_plan' => $assemblyPlan,
+    'equation_to_grammar_notes' => $equationNotes,
+    'part_breakdown' => $partBreakdown,
+];
+$result['model'] = $model;
+$result['variant'] = $variant;
+$result['attempt'] = $attempt;
+$result['depth'] = $depth;
+$result['overlap'] = $overlap;
+
+iw_json_response(['ok' => true, 'draft' => $result]);

@@ -1,0 +1,419 @@
+<?php
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+define('APP_ROOT', dirname(__DIR__));
+define('STORAGE_DIR', APP_ROOT . '/storage');
+
+require_once APP_ROOT . '/includes/site_content.php';
+
+auto_init_storage();
+
+function auto_init_storage(): void
+{
+    if (!is_dir(STORAGE_DIR)) {
+        mkdir(STORAGE_DIR, 0775, true);
+    }
+    $defaults = [
+        'users.json' => [],
+        'files.json' => [],
+        'counters.json' => ['users' => 0, 'files' => 0],
+    ];
+    foreach ($defaults as $file => $default) {
+        $path = STORAGE_DIR . '/' . $file;
+        if (!file_exists($path)) {
+            file_put_contents($path, json_encode($default, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        }
+    }
+}
+
+function storage_path(string $name): string
+{
+    return STORAGE_DIR . '/' . $name;
+}
+
+function storage_read(string $name, $default)
+{
+    $path = storage_path($name);
+    if (!file_exists($path)) {
+        return $default;
+    }
+    $raw = file_get_contents($path);
+    if ($raw === false || $raw === '') {
+        return $default;
+    }
+    $data = json_decode($raw, true);
+    return is_array($data) ? $data : $default;
+}
+
+function storage_write(string $name, array $data): void
+{
+    file_put_contents(storage_path($name), json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), LOCK_EX);
+}
+
+function next_id(string $bucket): int
+{
+    $counters = storage_read('counters.json', ['users' => 0, 'files' => 0]);
+    $counters[$bucket] = (int) ($counters[$bucket] ?? 0) + 1;
+    storage_write('counters.json', $counters);
+    return (int) $counters[$bucket];
+}
+
+function all_users(): array
+{
+    return storage_read('users.json', []);
+}
+
+function save_users(array $users): void
+{
+    storage_write('users.json', array_values($users));
+}
+
+function find_user_by_username(string $username): ?array
+{
+    foreach (all_users() as $user) {
+        if (($user['username'] ?? '') === $username) {
+            return $user;
+        }
+    }
+    return null;
+}
+
+function find_user_by_id(int $id): ?array
+{
+    foreach (all_users() as $user) {
+        if ((int) ($user['id'] ?? 0) === $id) {
+            return $user;
+        }
+    }
+    return null;
+}
+
+function create_user_record(string $username, string $passwordHash): array
+{
+    $users = all_users();
+    $record = [
+        'id' => next_id('users'),
+        'username' => $username,
+        'password_hash' => $passwordHash,
+        'created_at' => gmdate('c'),
+    ];
+    $users[] = $record;
+    save_users($users);
+    return $record;
+}
+
+function all_files(): array
+{
+    return storage_read('files.json', []);
+}
+
+function save_files(array $files): void
+{
+    usort($files, function ($a, $b) {
+        return strcmp((string) ($b['updated_at'] ?? ''), (string) ($a['updated_at'] ?? ''));
+    });
+    storage_write('files.json', array_values($files));
+}
+
+function get_user_files(int $userId): array
+{
+    return array_values(array_filter(all_files(), fn($file) => (int) ($file['user_id'] ?? 0) === $userId));
+}
+
+function get_public_files(): array
+{
+    $users = all_users();
+    $usernames = [];
+    foreach ($users as $user) {
+        $usernames[(int) $user['id']] = $user['username'];
+    }
+    $files = array_values(array_filter(all_files(), fn($file) => !empty($file['is_published'])));
+    foreach ($files as &$file) {
+        $file['username'] = $usernames[(int) ($file['user_id'] ?? 0)] ?? 'unknown';
+    }
+    unset($file);
+    usort($files, function ($a, $b) {
+        $aDate = (string) ($a['published_at'] ?? $a['updated_at'] ?? '');
+        $bDate = (string) ($b['published_at'] ?? $b['updated_at'] ?? '');
+        return strcmp($bDate, $aDate);
+    });
+    return $files;
+}
+
+function find_user_file(int $id, int $userId): ?array
+{
+    foreach (all_files() as $file) {
+        if ((int) ($file['id'] ?? 0) === $id && (int) ($file['user_id'] ?? 0) === $userId) {
+            return $file;
+        }
+    }
+    return null;
+}
+
+function find_public_file(int $id): ?array
+{
+    $users = all_users();
+    $usernames = [];
+    foreach ($users as $user) {
+        $usernames[(int) $user['id']] = $user['username'];
+    }
+    foreach (all_files() as $file) {
+        if ((int) ($file['id'] ?? 0) === $id && !empty($file['is_published'])) {
+            $file['username'] = $usernames[(int) ($file['user_id'] ?? 0)] ?? 'unknown';
+            return $file;
+        }
+    }
+    return null;
+}
+
+function upsert_file_record(int $userId, ?int $id, string $title, string $content, bool $publish = false): array
+{
+    $files = all_files();
+    $now = gmdate('c');
+    $title = trim($title) !== '' ? trim($title) : 'Untitled grammar';
+
+    if ($id) {
+        foreach ($files as &$file) {
+            if ((int) ($file['id'] ?? 0) === $id && (int) ($file['user_id'] ?? 0) === $userId) {
+                $file['title'] = $title;
+                $file['content'] = $content;
+                $file['updated_at'] = $now;
+                if ($publish) {
+                    $file['is_published'] = 1;
+                    if (empty($file['published_at'])) {
+                        $file['published_at'] = $now;
+                    }
+                }
+                save_files($files);
+                return $file;
+            }
+        }
+        unset($file);
+    }
+
+    $record = [
+        'id' => next_id('files'),
+        'user_id' => $userId,
+        'title' => $title,
+        'content' => $content,
+        'is_published' => $publish ? 1 : 0,
+        'created_at' => $now,
+        'updated_at' => $now,
+        'published_at' => $publish ? $now : null,
+    ];
+    $files[] = $record;
+    save_files($files);
+    return $record;
+}
+
+function set_file_published(int $id, int $userId, bool $published): bool
+{
+    $files = all_files();
+    foreach ($files as &$file) {
+        if ((int) ($file['id'] ?? 0) === $id && (int) ($file['user_id'] ?? 0) === $userId) {
+            $file['is_published'] = $published ? 1 : 0;
+            $file['updated_at'] = gmdate('c');
+            if ($published && empty($file['published_at'])) {
+                $file['published_at'] = gmdate('c');
+            }
+            save_files($files);
+            return true;
+        }
+    }
+    unset($file);
+    return false;
+}
+
+function delete_file_record(int $id, int $userId): bool
+{
+    $files = all_files();
+    $originalCount = count($files);
+    $files = array_values(array_filter($files, fn($file) => !((int) ($file['id'] ?? 0) === $id && (int) ($file['user_id'] ?? 0) === $userId)));
+    if (count($files) !== $originalCount) {
+        save_files($files);
+        return true;
+    }
+    return false;
+}
+
+function e(?string $value): string
+{
+    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+}
+
+function preview_excerpt(?string $value, int $width = 280): string
+{
+    $text = (string) $value;
+    if ($width < 1) {
+        return '';
+    }
+    if (function_exists('mb_strimwidth')) {
+        return mb_strimwidth($text, 0, $width, '…', 'UTF-8');
+    }
+    if (strlen($text) <= $width) {
+        return $text;
+    }
+    return rtrim(substr($text, 0, max(0, $width - 3))) . '...';
+}
+
+function current_user(): ?array
+{
+    static $user = false;
+    if ($user !== false) {
+        return $user;
+    }
+    $user = empty($_SESSION['user_id']) ? null : find_user_by_id((int) $_SESSION['user_id']);
+    return $user;
+}
+
+function require_login(): void
+{
+    if (!current_user()) {
+        header('Location: login.php');
+        exit;
+    }
+}
+
+function csrf_token(): string
+{
+    if (empty($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+function verify_csrf(): void
+{
+    $token = $_POST['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+    if (!hash_equals(csrf_token(), (string) $token)) {
+        http_response_code(419);
+        echo 'CSRF token mismatch.';
+        exit;
+    }
+}
+
+function flash_set(string $type, string $message): void
+{
+    $_SESSION['flash'] = ['type' => $type, 'message' => $message];
+}
+
+function flash_get(): ?array
+{
+    if (empty($_SESSION['flash'])) {
+        return null;
+    }
+    $flash = $_SESSION['flash'];
+    unset($_SESSION['flash']);
+    return $flash;
+}
+
+function render_header(string $title, string $active = '', array $options = []): void
+{
+    $user = current_user();
+    $flash = flash_get();
+    $bodyClass = trim((string) ($options['body_class'] ?? ''));
+    $extraHead = $options['extra_head'] ?? '';
+    if (is_array($extraHead)) {
+        $extraHead = implode("\n", array_map('strval', $extraHead));
+    }
+    ?>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title><?= e($title) ?> | ProGen3D Live Site</title>
+      <link rel="preconnect" href="https://fonts.googleapis.com">
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+      <link rel="stylesheet" href="assets/site.css">
+      <?php if ($extraHead !== ''): ?>
+        <?= $extraHead ?>
+      <?php endif; ?>
+    </head>
+    <body<?= $bodyClass !== '' ? ' class="' . e($bodyClass) . '"' : '' ?> data-page="<?= e($active !== '' ? $active : 'page') ?>" data-auth="<?= $user ? '1' : '0' ?>">
+      <div class="site-backdrop" aria-hidden="true">
+        <div class="site-backdrop__orb site-backdrop__orb--a"></div>
+        <div class="site-backdrop__orb site-backdrop__orb--b"></div>
+        <div class="site-backdrop__glow"></div>
+        <div class="site-backdrop__grid"></div>
+      </div>
+      <header class="site-header">
+        <div class="site-shell header-shell">
+          <a class="brand" href="index.php">
+            <span class="brand-mark">P3D</span>
+            <span>
+              <strong>ProGen3D</strong>
+              <small>Live grammar studio</small>
+            </span>
+          </a>
+          <nav class="site-nav" aria-label="Primary navigation">
+            <a class="<?= $active === 'home' ? 'active' : '' ?>" href="index.php">Home</a>
+            <a class="<?= $active === 'docs' ? 'active' : '' ?>" href="docs.php">Docs</a>
+            <a class="<?= $active === 'reference' ? 'active' : '' ?>" href="reference.php">Reference</a>
+            <a class="<?= $active === 'examples' ? 'active' : '' ?>" href="examples.php">Examples</a>
+            <a class="<?= $active === 'writer' ? 'active' : '' ?>" href="grammar-writer.php">Writer</a>
+            <?php if ($user): ?>
+              <a class="<?= $active === 'intelligent-writer' ? 'active' : '' ?>" href="intelligent-writer.php">Intelligent Writer</a>
+            <?php endif; ?>
+            <a class="<?= $active === 'gallery' ? 'active' : '' ?>" href="gallery.php">Gallery</a>
+            <button class="site-tour-launch js-site-tour-launch" type="button" title="Start the guided interactive site tour">Interactive site tour</button>
+            <?php if ($user): ?>
+              <a class="<?= $active === 'editor' ? 'active' : '' ?>" href="editor.php">Editor</a>
+              <a class="<?= $active === 'files' ? 'active' : '' ?>" href="files.php">My Files</a>
+              <a class="nav-pill" href="logout.php">Logout · <?= e($user['username']) ?></a>
+            <?php else: ?>
+              <a class="<?= $active === 'login' ? 'active' : '' ?>" href="login.php">Login</a>
+              <a class="nav-pill" href="register.php">Create account</a>
+            <?php endif; ?>
+          </nav>
+        </div>
+      </header>
+      <?php if ($flash): ?>
+        <div class="site-shell flash-wrap">
+          <div class="flash flash-<?= e($flash['type']) ?>"><?= e($flash['message']) ?></div>
+        </div>
+      <?php endif; ?>
+    <?php
+}
+
+function render_footer(): void
+{
+    $examples = site_examples();
+    ?>
+      <footer class="site-footer">
+        <div class="site-shell footer-shell">
+          <div class="footer-brand-block">
+            <span class="eyebrow">ProGen3D live site</span>
+            <h2>Procedural grammar authoring, live scene viewing, and publishable workflow in one site shell.</h2>
+            <p>Use the editor for live grammar work, the file library for private organisation, the gallery for public browsing, and the docs stack when you need syntax or examples close to the runtime.</p>
+          </div>
+          <div class="footer-link-columns">
+            <div class="footer-link-group">
+              <strong>Explore</strong>
+              <a href="editor.php">Editor</a>
+              <a href="files.php">My files</a>
+              <a href="gallery.php">Gallery</a>
+              <a href="grammar-writer.php">Grammar writer</a>
+              <?php if (current_user()): ?><a href="intelligent-writer.php">Intelligent Writer</a><?php endif; ?>
+            </div>
+            <div class="footer-link-group">
+              <strong>Learn</strong>
+              <a href="docs.php">Documentation</a>
+              <a href="reference.php">Reference</a>
+              <a href="examples.php">Examples</a>
+            </div>
+            <div class="footer-link-group footer-link-group--note">
+              <strong>Fast start</strong>
+              <p>Paste one of the <?= count($examples) ?> examples into the editor, run it, then save or publish when the scene reads clearly.</p>
+            </div>
+          </div>
+        </div>
+      </footer>
+      <script src="assets/site.js"></script>
+    </body>
+    </html>
+    <?php
+}

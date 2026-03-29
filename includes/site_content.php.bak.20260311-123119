@@ -1,0 +1,460 @@
+<?php
+
+function site_reference_sections(): array
+{
+    return [
+        [
+            'title' => 'Rule structure',
+            'intro' => 'Every grammar starts with one or more rules. The first parsed rule becomes the entry point for execution. Rule headers can now resolve incoming variables first, then evaluate a repeat expression, then execute a grouped body or segmented pre/main/post flow.',
+            'items' => [
+                ['syntax' => 'Start -> body', 'meaning' => 'Defines a basic entry rule and sends execution into its body. Use this when you do not need resolved variables or an explicit repeat expression.'],
+                ['syntax' => 'RuleName(vars_resolve) repeat_expr ->  rule body ', 'meaning' => 'Defines a rule that first resolves the named incoming variables, then evaluates repeat_expr, then runs the body. repeat_expr should resolve to an integer count. Write the body as the rule output sequence, usually using grouped blocks like [ ... ] for structure.'],
+                ['syntax' => 'RuleName(vars_resolve) repeat_expr -> pre_rules | main_bodyrules | post_rules', 'meaning' => 'Splits one rule into up to three execution phases. pre_rules run first for setup, support geometry, or variable preparation; main_bodyrules are the primary emitted structure; post_rules run last for caps, crowns, cleanup geometry, or follow-on attachments. Use one or two pipes only when you actually need staged execution.'],
+                ['syntax' => '?(cond_expr) Rule', 'meaning' => 'Single-branch conditional rule call. If cond_expr evaluates truthy, the named rule is executed; otherwise nothing is emitted from that conditional. This is useful for optional branches, bounded recursion, or one-sided feature toggles.'],
+                ['syntax' => '?(cond_expr) rulemain : rulealt', 'meaning' => 'Two-branch conditional rule selection. If cond_expr is true, rulemain runs; otherwise rulealt runs. This is the clearest way to switch between growth paths, motif families, detail levels, or termination rules.'],
+                ['syntax' => '[ ... ]', 'meaning' => 'Creates a grouped structural block that can contain transforms, variables, conditionals, and instances as one composable unit inside a rule body.'],
+            ],
+        ],
+        [
+            'title' => 'Transforms',
+            'intro' => 'These operators change placement, scale, and orientation before an instance is emitted.',
+            'items' => [
+                ['syntax' => 'T ( x y z )', 'meaning' => 'Translate in 3D space.'],
+                ['syntax' => 'S ( sx sy sz )', 'meaning' => 'Scale on each axis.'],
+                ['syntax' => 'A ( angle axis )', 'meaning' => 'Rotate by degrees where axis 0 = X, 1 = Y, 2 = Z.'],
+                ],
+        ],
+        [
+            'title' => 'Axis deformation controls',
+            'intro' => 'The viewer build supports nested axis deformation transforms for more directional shaping.',
+            'items' => [
+                ['syntax' => 'DSX ( x y z )', 'meaning' => 'Dynamic scale influence for the X deformation branch.'],
+                ['syntax' => 'DSY ( x y z )', 'meaning' => 'Dynamic scale influence for the Y deformation branch.'],
+                ['syntax' => 'DSZ ( x y z )', 'meaning' => 'Dynamic scale influence for the Z deformation branch.'],
+                ['syntax' => 'DTX ( x y z )', 'meaning' => 'Dynamic translation for the X deformation branch.'],
+                ['syntax' => 'DTY ( x y z )', 'meaning' => 'Dynamic translation for the Y deformation branch.'],
+                ['syntax' => 'DTZ ( x y z )', 'meaning' => 'Dynamic translation for the Z deformation branch.'],
+            ],
+        ],
+        [
+            'title' => 'Instances and materials',
+            'intro' => 'Geometry is produced through the instance operator. The current runtime supports four primitive identifiers, each followed by a texture name and scale value.',
+            'items' => [
+                ['syntax' => 'I ( Cube texture scale )', 'meaning' => 'Instantiate a cube primitive with a texture preset and scalar value.'],
+                ['syntax' => 'I ( CubeX texture scale )', 'meaning' => 'Instantiate an X-oriented beam-like cube.'],
+                ['syntax' => 'I ( CubeY texture scale )', 'meaning' => 'Instantiate a Y-oriented cube variant.'],
+                ['syntax' => 'I ( CubeZ texture scale )', 'meaning' => 'Instantiate a Z-oriented beam-like cube.'],
+                ['syntax' => 'I ( Cube brushedAluminum 0.35 )', 'meaning' => 'Use a named renderer texture preset directly in the instance call.'],
+            ],
+        ],
+        [
+            'title' => 'Textures',
+            'intro' => 'The active renderer ships with built-in procedural texture presets. Use the preset name in the instance operator for predictable surface results.',
+            'items' => [
+                ['syntax' => 'roughConcrete / smoothConcrete / crackedAsphalt / redBrickWall / whiteTiles / blueCeramicTile', 'meaning' => 'Structural and architectural surface presets.'],
+                ['syntax' => 'shinySteel / brushedAluminum / oxidizedCopper / agedBronze / shinyGold / tarnishedSilver / rawIron / polishedTitanium / rustyMetal', 'meaning' => 'Metallic and industrial finishes.'],
+                ['syntax' => 'clearGlass / frostedGlass / tintedGreenGlass / stainedBlueGlass', 'meaning' => 'Transparent and translucent glass presets.'],
+                ['syntax' => 'freshGrass / dryGrass / desertSand / muddySoil / grayStone / darkBasalt / whiteMarble / greenMarble', 'meaning' => 'Ground, stone, and landscape-style textures.'],
+                ['syntax' => 'oakPlanks / darkWalnut / pineWood / mahoganyWood / cherryWood / mapleWood', 'meaning' => 'Wood and timber finishes.'],
+                ['syntax' => 'iceBlock / moltenLava / deepWater / snowPowder / fluffyCloud / mossPatch / claySoil', 'meaning' => 'Elemental and atmospheric presets.'],
+                ['syntax' => 'carbonFiber / circuitBoard / glowingPanel / hazardStripe / steelGrid / chromeSurface', 'meaning' => 'Sci-fi, technical, and industrial panel presets.'],
+                ['syntax' => 'Example: Start -> I ( Cube frostedGlass 0.22 )', 'meaning' => 'A compact example of applying a named texture preset in a grammar.'],
+            ],
+        ],
+        [
+            'title' => 'Variables and math',
+            'intro' => 'The parser supports ranged variables and inline math spans. Math expressions must not contain spaces once the expression begins.',
+            'items' => [
+                ['syntax' => 'R name ( min max )', 'meaning' => 'Create a ranged variable inside a rule body. Do not place ranged variables as standalone top-level lines before rules.'],
+                ['syntax' => 'x+y', 'meaning' => 'Inline math is supported inside numeric argument slots.'],
+                ['syntax' => 'sin(x)', 'meaning' => 'The evaluator currently recognises sin and cos.'],
+                ['syntax' => 'spacing rule', 'meaning' => 'Write S ( 1 2 3 ) rather than S(1 2 3). Operators and values are space-delimited.'],
+            ],
+        ],
+        [
+            'title' => 'Viewer and workflow',
+            'intro' => 'The PHP site wraps the modular editor with account, file, and publishing workflow around the live WebGL scene.',
+            'items' => [
+                ['syntax' => 'Run Grammar', 'meaning' => 'Executes the current grammar and refreshes the scene.'],
+                ['syntax' => 'Save', 'meaning' => 'Stores the current grammar in JSON-backed project storage under your account.'],
+                ['syntax' => 'Publish to gallery', 'meaning' => 'Marks a file public so it appears in the gallery live viewer.'],
+                ['syntax' => 'Fit View / Reset View', 'meaning' => 'Viewer controls adjust the camera around current scene bounds.'],
+                ['syntax' => 'STL export', 'meaning' => 'The embedded editor still exposes STL export from the underlying WebGL toolchain.'],
+            ],
+        ],
+    ];
+}
+
+function site_docs_sections(): array
+{
+    return [
+        [
+            'title' => 'Quick start workflow',
+            'body' => [
+                'Create an account, open the editor, write a grammar into the input panel, then run it to generate geometry in the scene viewer. Save drafts privately while you iterate. When a piece is ready, publish it to the gallery so it becomes browsable in the live viewer.',
+                'The PHP shell does not replace the original grammar runtime. It wraps the working modular editor so the same scene engine, SmartEditor, syntax highlighting, STL export, grid, axis widget, and orbit navigation remain available inside a proper site workflow.',
+            ],
+            'bullets' => [
+                'Login-protected editor and file storage',
+                'Public gallery for published grammars',
+                'Read-only public viewer pages',
+                'Copy-to-editor flow for remixing gallery work',
+            ],
+        ],
+        [
+            'title' => 'Grammar authoring tips',
+            'body' => [
+                'Keep operators spaced out. The parser is deliberately strict about token separation, so transforms, brackets, and numeric arguments should each be visually distinct. Small readable lines reduce parse errors and make the SmartEditor diagnostics easier to follow.',
+                'Build from the simplest valid scene first. Start with a single instance, then add scale, translation, rotation, and grouped blocks one layer at a time. That makes scene debugging far easier than writing a large grammar and trying to reason about multiple changes at once.',
+            ],
+            'bullets' => [
+                'Start from one visible primitive',
+                'Add transforms incrementally',
+                'Use brackets to compose multi-part scenes',
+                'Use variables only after the base form renders correctly',
+            ],
+        ],
+        [
+            'title' => 'Publishing and storage',
+            'body' => [
+                'This build stores users and grammar files in JSON files inside the storage directory. Drafts remain private to the logged-in owner. Publishing flips a visibility flag so the grammar appears on the public gallery page and in the live gallery viewer.',
+                'Because the site keeps authored grammar text rather than only baked geometry, published works can be previewed, opened in the public viewer, or copied back into a private editor session for further iteration.',
+            ],
+            'bullets' => [
+                'storage/users.json for accounts',
+                'storage/files.json for grammars',
+                'storage/counters.json for numeric ids',
+                'No external SQL setup required in this build',
+            ],
+        ],
+        [
+            'title' => 'Scene viewer controls',
+            'body' => [
+                'The integrated viewer uses the custom SVEC orbit style that was patched into the project. Drag to orbit, use the wheel to zoom, and use the fit/reset controls to reframe the current grammar output. The XZ grid and orientation axis widget are always visible inside the active scene viewer.',
+                'Published gallery pieces use the same viewer engine in read-only mode. That gives the live site a consistent visual language between authoring, browsing, and public presentation.',
+            ],
+            'bullets' => [
+                'Drag to orbit',
+                'Ctrl-drag or secondary drag to pan',
+                'Wheel to zoom',
+                'Fit View and Reset View for framing',
+            ],
+        ],
+    ];
+}
+
+function site_examples(): array
+{
+    return [
+        [
+            'slug' => 'starter-cube',
+            'title' => 'Starter cube',
+            'summary' => 'The smallest valid starting point for checking that your pipeline, textures, and viewer are working.',
+            'tags' => ['starter', 'primitive', 'material'],
+            'grammar' => "Start -> I ( Cube metal 0.5 )",
+        ],
+        [
+            'slug' => 'beam-axis',
+            'title' => 'X-axis beam',
+            'summary' => 'A simple elongated beam using scale plus the CubeX primitive.',
+            'tags' => ['beam', 'scale', 'x-axis'],
+            'grammar' => "Start -> S ( 1 1 4 ) I ( CubeX metal 0.35 )",
+        ],
+        [
+            'slug' => 'stacked-masses',
+            'title' => 'Stacked masses',
+            'summary' => 'Two grouped forms combined with brackets, translation, and scale to make a simple vertical composition.',
+            'tags' => ['stack', 'grouping', 'composition'],
+            'grammar' => "Start ->\n[ I ( Cube stone 0.45 ) ]\n[ T ( 0 1.2 0 ) S ( 0.72 0.42 0.72 ) I ( Cube glass 0.24 ) ]",
+        ],
+        [
+            'slug' => 'twin-towers',
+            'title' => 'Twin towers',
+            'summary' => 'A readable multi-part arrangement using bracket groups to place two towers and a connecting bridge.',
+            'tags' => ['architecture', 'bridge', 'grouping'],
+            'grammar' => "Start ->\n[ T ( -1.45 1.2 0 ) S ( 0.78 2.4 0.78 ) I ( Cube concrete 0.32 ) ]\n[ T ( 1.45 1.2 0 ) S ( 0.78 2.4 0.78 ) I ( Cube concrete 0.32 ) ]\n[ T ( 0 2.55 0 ) S ( 3.6 0.18 0.78 ) I ( Cube metal 0.18 ) ]",
+        ],
+        [
+            'slug' => 'pavilion-frame',
+            'title' => 'Pavilion frame',
+            'summary' => 'A low platform, four columns, and a canopy using only transforms and primitive instances.',
+            'tags' => ['pavilion', 'columns', 'canopy'],
+            'grammar' => "Start ->\n[ S ( 4 0.14 4 ) I ( Cube stone 0.24 ) ]\n[ T ( -1.5 1.15 -1.5 ) S ( 0.16 2.3 0.16 ) I ( Cube metal 0.2 ) ]\n[ T ( 1.5 1.15 -1.5 ) S ( 0.16 2.3 0.16 ) I ( Cube metal 0.2 ) ]\n[ T ( -1.5 1.15 1.5 ) S ( 0.16 2.3 0.16 ) I ( Cube metal 0.2 ) ]\n[ T ( 1.5 1.15 1.5 ) S ( 0.16 2.3 0.16 ) I ( Cube metal 0.2 ) ]\n[ T ( 0 2.4 0 ) S ( 3.7 0.16 3.7 ) I ( Cube glass 0.12 ) ]",
+        ],
+        [
+            'slug' => 'axis-deform',
+            'title' => 'Axis deformation test',
+            'summary' => 'A compact example showing the DSX/DSY/DSZ and DTX/DTY/DTZ controls in one place.',
+            'tags' => ['deform', 'axis', 'advanced'],
+            'grammar' => "Start -> DSX ( 1.22 1 1 ) DTX ( 0.14 0 0 ) DSY ( 1 0.84 1 ) DTY ( 0 0.18 0 ) DSZ ( 1 1 1.16 ) DTZ ( 0 0 0.22 ) I ( CubeZ metal 0.52 )",
+        ],
+        [
+            'slug' => 'rotated-cross',
+            'title' => 'Rotated cross frame',
+            'summary' => 'Uses rotation plus grouped beams to create a lightweight frame composition.',
+            'tags' => ['rotation', 'frame', 'beams'],
+            'grammar' => "Start ->\n[ S ( 0.2 0.2 5 ) I ( CubeZ wood 0.18 ) ]\n[ A ( 90 1 ) S ( 0.2 0.2 5 ) I ( CubeZ wood 0.18 ) ]\n[ A ( 45 1 ) S ( 0.18 0.18 4.2 ) I ( CubeZ metal 0.16 ) ]\n[ A ( -45 1 ) S ( 0.18 0.18 4.2 ) I ( CubeZ metal 0.16 ) ]",
+        ],
+        [
+            'slug' => 'glass-plinth',
+            'title' => 'Glass plinth object',
+            'summary' => 'A clean pedestal-style object for material checks and screenshot-friendly previews.',
+            'tags' => ['render', 'glass', 'display'],
+            'grammar' => "Start ->\n[ S ( 2.2 0.18 2.2 ) I ( Cube stone 0.24 ) ]\n[ T ( 0 0.72 0 ) S ( 1 1.08 1 ) I ( Cube glass 0.14 ) ]\n[ T ( 0 1.48 0 ) S ( 0.54 0.22 0.54 ) I ( Cube metal 0.18 ) ]",
+        ],
+    ];
+}
+
+function site_example_by_slug(?string $slug): ?array
+{
+    $slug = trim((string) $slug);
+    if ($slug === '') {
+        return null;
+    }
+    foreach (site_examples() as $example) {
+        if (($example['slug'] ?? '') === $slug) {
+            return $example;
+        }
+    }
+    return null;
+}
+
+
+function site_archetype_reference(): array
+{
+    return [
+        'overview' => [
+            'title' => 'Structural archetypes reference',
+            'intro' => 'These archetypes turn common structural patterns into reusable ProGen3D motif families. Each motif is axis-aware, parameterized, and designed to compose cleanly with transforms, symmetry, recursion, and material presets.',
+            'conventions' => [
+                'Axis mapping: 0 = X, 1 = Y, 2 = Z.',
+                'Shared variables usually include N (count), R (radius), H (levels), step (spacing), taper, twist, depth, primitive, and material.',
+                'The pseudocode below is template-oriented rather than strict final parser syntax, so it can guide implementation, prompts, and copy-ready examples.',
+            ],
+        ],
+        'categories' => [
+            [
+                'title' => 'Foundational motifs',
+                'intro' => 'These are the core arrangement logics. Most higher-order motifs can be built from this layer.',
+                'motifs' => [
+                    [
+                        'name' => 'Spokes',
+                        'description' => 'Instances radiate around a central axis at equal angular intervals.',
+                        'parameters' => ['N:int', 'R:float', 'axis:int', 'elementScale:float', 'jitterAngle:float', 'primitive:symbol', 'material:symbol'],
+                        'uses' => ['hubs', 'antennas', 'petals', 'radial bracing', 'canopies'],
+                        'pseudocode' => "Spokes(N R axis elementScale jitterAngle primitive material) 1 ->\n    SpokesIter(0 N R axis elementScale jitterAngle primitive material)\n\nSpokesIter(i N R axis elementScale jitterAngle primitive material) ?(i < int(N)) ->\n    [\n        RotateAroundAxis(axis, 360*i/N + Rand(-jitterAngle,jitterAngle))\n        TranslateRadial(axis, R)\n        OrientRadially(axis, 360*i/N)\n        S(elementScale elementScale elementScale)\n        I(primitive material 1)\n    ]\n    SpokesIter(i+1 N R axis elementScale jitterAngle primitive material)",
+                    ],
+                    [
+                        'name' => 'Ring',
+                        'description' => 'A closed loop of repeated instances arranged around an axis.',
+                        'parameters' => ['N:int', 'R:float', 'axis:int', 'thickness:float', 'primitive:symbol', 'material:symbol'],
+                        'uses' => ['collars', 'wheels', 'stadium edges', 'circular tiers', 'mechanical loops'],
+                        'pseudocode' => "Ring(N R axis thickness primitive material) 1 ->\n    RingSeg(0 N R axis thickness primitive material)\n\nRingSeg(i N R axis thickness primitive material) ?(i < int(N)) ->\n    [\n        RotateAroundAxis(axis, 360*i/N)\n        TranslateRadial(axis, R)\n        OrientRadially(axis, 360*i/N)\n        S(thickness thickness thickness)\n        I(primitive material 1)\n    ]\n    RingSeg(i+1 N R axis thickness primitive material)",
+                    ],
+                    [
+                        'name' => 'Band',
+                        'description' => 'A linear sequence of repeated instances distributed along a span.',
+                        'parameters' => ['N:int', 'span:float', 'axis:int', 'taper:float', 'primitive:symbol', 'material:symbol'],
+                        'uses' => ['facades', 'decks', 'ribs', 'beams', 'tracks'],
+                        'pseudocode' => "Band(N span axis taper primitive material) 1 ->\n    BandSeg(0 N span axis taper primitive material)\n\nBandSeg(i N span axis taper primitive material) ?(i < int(N)) ->\n    [\n        t F(i N) InvLerp(i,N)\n        s F(t taper) Lerp(1,taper,t)\n        TranslateAlongAxis(axis, -span*0.5 + span*t)\n        S(s s s)\n        I(primitive material 1)\n    ]\n    BandSeg(i+1 N span axis taper primitive material)",
+                    ],
+                    [
+                        'name' => 'Stack',
+                        'description' => 'Repeating instances ascending along an axis.',
+                        'parameters' => ['H:int', 'step:float', 'axis:int', 'taper:float', 'twist:float', 'primitive:symbol', 'material:symbol'],
+                        'uses' => ['towers', 'pagodas', 'pillars', 'segmented masts'],
+                        'pseudocode' => "Stack(H step axis taper twist primitive material) 1 ->\n    StackLevel(0 H step axis taper twist primitive material)\n\nStackLevel(i H step axis taper twist primitive material) ?(i < int(H)) ->\n    [\n        t F(i H) InvLerp(i,H)\n        s F(t taper) Lerp(1,taper,t)\n        TranslateAlongAxis(axis, i*step)\n        RotateAroundAxis(axis, i*twist)\n        S(s s s)\n        I(primitive material 1)\n    ]\n    StackLevel(i+1 H step axis taper twist primitive material)",
+                    ],
+                    [
+                        'name' => 'Grid',
+                        'description' => 'A 2D lattice of repeated elements on a plane.',
+                        'parameters' => ['Gx:int', 'Gy:int', 'cellSpanX:float', 'cellSpanY:float', 'planeAxis:int', 'primitive:symbol', 'material:symbol'],
+                        'uses' => ['floors', 'facades', 'shelving', 'structural lattice fields'],
+                        'pseudocode' => "Grid(Gx Gy cellSpanX cellSpanY planeAxis primitive material) 1 ->\n    GridRow(0 Gx Gy cellSpanX cellSpanY planeAxis primitive material)\n\nGridRow(ix Gx Gy cellSpanX cellSpanY planeAxis primitive material) ?(ix < int(Gx)) ->\n    GridCol(ix 0 Gx Gy cellSpanX cellSpanY planeAxis primitive material)\n    GridRow(ix+1 Gx Gy cellSpanX cellSpanY planeAxis primitive material)\n\nGridCol(ix iy Gx Gy cellSpanX cellSpanY planeAxis primitive material) ?(iy < int(Gy)) ->\n    [\n        PlaneTranslate(planeAxis, (ix-(Gx-1)/2)*cellSpanX, (iy-(Gy-1)/2)*cellSpanY)\n        I(primitive material 1)\n    ]\n    GridCol(ix iy+1 Gx Gy cellSpanX cellSpanY planeAxis primitive material)",
+                    ],
+                ],
+            ],
+            [
+                'title' => 'Derived and compound motifs',
+                'intro' => 'These motifs combine or deform foundational patterns into richer structural families.',
+                'motifs' => [
+                    [
+                        'name' => 'RingStack',
+                        'description' => 'Multiple rings stacked along an axis with optional scale ramping.',
+                        'parameters' => ['rings:int', 'perRingN:int', 'R:float', 'ringStep:float', 'axis:int', 'scaleRamp:float', 'primitive:symbol', 'material:symbol'],
+                        'uses' => ['turbine cages', 'amphitheaters', 'ring towers', 'canopies'],
+                        'pseudocode' => "RingStack(rings perRingN R ringStep axis scaleRamp primitive material) 1 ->\n    RingStackIter(0 rings perRingN R ringStep axis scaleRamp primitive material)\n\nRingStackIter(i rings perRingN R ringStep axis scaleRamp primitive material) ?(i < int(rings)) ->\n    [\n        t F(i rings) InvLerp(i,rings)\n        s F(t scaleRamp) Lerp(1,scaleRamp,t)\n        TranslateAlongAxis(axis, i*ringStep)\n        S(s s s)\n        Ring(perRingN R axis 1 primitive material)\n    ]\n    RingStackIter(i+1 rings perRingN R ringStep axis scaleRamp primitive material)",
+                    ],
+                    [
+                        'name' => 'Spiral',
+                        'description' => 'A helical band winding around an axis with pitch and radius control.',
+                        'parameters' => ['N:int', 'turns:float', 'pitch:float', 'R0:float', 'dR:float', 'axis:int', 'primitive:symbol', 'material:symbol'],
+                        'uses' => ['stairs', 'ramps', 'helix towers', 'DNA-like structures'],
+                        'pseudocode' => "Spiral(N turns pitch R0 dR axis primitive material) 1 ->\n    SpiralSeg(0 N turns pitch R0 dR axis primitive material)\n\nSpiralSeg(i N turns pitch R0 dR axis primitive material) ?(i < int(N)) ->\n    [\n        t F(i N) InvLerp(i,N)\n        ang F(t turns) 360*turns*t\n        r F(t R0 dR) R0 + dR*t\n        RotateAroundAxis(axis, ang)\n        TranslateRadial(axis, r)\n        TranslateAlongAxis(axis, pitch*turns*t)\n        OrientRadially(axis, ang)\n        I(primitive material 1)\n    ]\n    SpiralSeg(i+1 N turns pitch R0 dR axis primitive material)",
+                    ],
+                    [
+                        'name' => 'Fork',
+                        'description' => 'A branching motif that splits a line or stack into multiple offspring.',
+                        'parameters' => ['depth:int', 'branching:int', 'splitAngle:float', 'step:float', 'childScale:float', 'axis:int', 'primitive:symbol', 'material:symbol'],
+                        'uses' => ['trees', 'branching frames', 'vascular systems', 'support bifurcations'],
+                        'pseudocode' => "Fork(depth branching splitAngle step childScale axis primitive material) 1 ->\n    ForkNode(depth branching splitAngle step childScale axis primitive material)\n\nForkNode(depth branching splitAngle step childScale axis primitive material) 1 ->\n    [ I(primitive material 1) ]\n    ?(depth > 0) ForkChildren(depth branching splitAngle step childScale axis primitive material)\n\nForkChildren(depth branching splitAngle step childScale axis primitive material) 1 ->\n    ForkBranch(0 depth branching splitAngle step childScale axis primitive material)\n\nForkBranch(i depth branching splitAngle step childScale axis primitive material) ?(i < int(branching)) ->\n    [\n        RotateAroundPerpAxes(axis, SpreadAngle(i,branching,splitAngle))\n        TranslateAlongAxis(axis, step)\n        S(childScale childScale childScale)\n        ForkNode(depth-1 branching splitAngle step childScale axis primitive material)\n    ]\n    ForkBranch(i+1 depth branching splitAngle step childScale axis primitive material)",
+                    ],
+                    [
+                        'name' => 'RadialGrid',
+                        'description' => 'A polar lattice made from concentric rings crossed by spokes.',
+                        'parameters' => ['ringCount:int', 'spokesCount:int', 'ringSpacing:float', 'axis:int', 'primitive:symbol', 'material:symbol'],
+                        'uses' => ['plazas', 'stadium plans', 'solar layouts', 'radial truss networks'],
+                        'pseudocode' => "RadialGrid(ringCount spokesCount ringSpacing axis primitive material) 1 ->\n    [ Spokes(spokesCount ringCount*ringSpacing axis 1 0 primitive material) ]\n    RadialRingIter(1 ringCount spokesCount ringSpacing axis primitive material)\n\nRadialRingIter(i ringCount spokesCount ringSpacing axis primitive material) ?(i <= int(ringCount)) ->\n    [ Ring(spokesCount i*ringSpacing axis 1 primitive material) ]\n    RadialRingIter(i+1 ringCount spokesCount ringSpacing axis primitive material)",
+                    ],
+                    [
+                        'name' => 'Ribbon',
+                        'description' => 'A band sampled along a curve or spline, suitable for skins and bridges.',
+                        'parameters' => ['N:int', 'thickness:float', 'twist:float', 'curveFn:symbol', 'axis:int', 'primitive:symbol', 'material:symbol'],
+                        'uses' => ['bridges', 'skins', 'ornament', 'aerodynamic strips'],
+                        'pseudocode' => "Ribbon(N thickness twist curveFn axis primitive material) 1 ->\n    RibbonSeg(0 N thickness twist curveFn axis primitive material)\n\nRibbonSeg(i N thickness twist curveFn axis primitive material) ?(i < int(N)) ->\n    [\n        t F(i N) InvLerp(i,N)\n        CurveSample(curveFn, t)\n        CurveOrient(curveFn, t, axis)\n        RotateAroundLocalTangent(twist*t)\n        S(thickness thickness thickness)\n        I(primitive material 1)\n    ]\n    RibbonSeg(i+1 N thickness twist curveFn axis primitive material)",
+                    ],
+                ],
+            ],
+            [
+                'title' => 'Architectural and system motifs',
+                'intro' => 'These motifs encode built-form intent on top of the simpler arrangement families.',
+                'motifs' => [
+                    [
+                        'name' => 'TerracedStack',
+                        'description' => 'A stepped stack with progressive setbacks and shrinkage.',
+                        'parameters' => ['floors:int', 'floorHeight:float', 'shrinkFactor:float', 'axis:int', 'primitive:symbol', 'material:symbol'],
+                        'uses' => ['ziggurats', 'setback towers', 'layered massing studies'],
+                        'pseudocode' => "TerracedStack(floors floorHeight shrinkFactor axis primitive material) 1 ->\n    TerraceLevel(0 floors floorHeight shrinkFactor axis primitive material)\n\nTerraceLevel(i floors floorHeight shrinkFactor axis primitive material) ?(i < int(floors)) ->\n    [\n        s F(i shrinkFactor) pow(shrinkFactor,i)\n        TranslateAlongAxis(axis, i*floorHeight)\n        S(s 1 s)\n        I(primitive material 1)\n    ]\n    TerraceLevel(i+1 floors floorHeight shrinkFactor axis primitive material)",
+                    ],
+                    [
+                        'name' => 'FaçadeBandGrid',
+                        'description' => 'A facade system combining horizontal bands and a vertical grid of panels or mullions.',
+                        'parameters' => ['rows:int', 'cols:int', 'rowStep:float', 'colStep:float', 'mullionThick:float', 'panelScale:float', 'planeAxis:int', 'panelPrimitive:symbol', 'mullionPrimitive:symbol', 'material:symbol'],
+                        'uses' => ['curtain walls', 'window rows', 'facade studies', 'modular wall systems'],
+                        'pseudocode' => "FacadeBandGrid(rows cols rowStep colStep mullionThick panelScale planeAxis panelPrimitive mullionPrimitive material) 1 ->\n    [ Grid(cols rows colStep rowStep planeAxis panelPrimitive material) ]\n    [ FacadeMullions(rows cols rowStep colStep mullionThick planeAxis mullionPrimitive material) ]",
+                    ],
+                    [
+                        'name' => 'VaultedRingGrid',
+                        'description' => 'A ring or grid field with an arch lift or vault deformation.',
+                        'parameters' => ['span:float', 'archHeight:float', 'N:int', 'axis:int', 'mode:symbol', 'primitive:symbol', 'material:symbol'],
+                        'uses' => ['halls', 'canopies', 'arched roofs', 'vaulted pavilions'],
+                        'pseudocode' => "VaultedRingGrid(span archHeight N axis mode primitive material) 1 ->\n    ?(mode==ring) VaultedRing(span archHeight N axis primitive material) : VaultedGrid(span archHeight N axis primitive material)",
+                    ],
+                    [
+                        'name' => 'RadialCanopy',
+                        'description' => 'Spokes and rings bent upward toward a canopy profile.',
+                        'parameters' => ['spokes:int', 'rings:int', 'radius:float', 'ringStep:float', 'curvature:float', 'axis:int', 'primitive:symbol', 'material:symbol'],
+                        'uses' => ['umbrella forms', 'pavilions', 'roof canopies', 'radial shelters'],
+                        'pseudocode' => "RadialCanopy(spokes rings radius ringStep curvature axis primitive material) 1 ->\n    CanopyRing(0 rings spokes radius ringStep curvature axis primitive material)\n\nCanopyRing(i rings spokes radius ringStep curvature axis primitive material) ?(i < int(rings)) ->\n    [\n        t F(i rings) InvLerp(i,rings)\n        lift F(t curvature) curvature*t*t\n        TranslateAlongAxis(axis, lift)\n        Ring(spokes radius*(t+1/rings) axis 1 primitive material)\n    ]\n    CanopyRing(i+1 rings spokes radius ringStep curvature axis primitive material)",
+                    ],
+                ],
+            ],
+            [
+                'title' => 'Fractal and recursive motifs',
+                'intro' => 'These motifs add repetition across depth, ornament, and growth patterns. They should always be bounded by depth and scale damping.',
+                'motifs' => [
+                    [
+                        'name' => 'RecursiveRing',
+                        'description' => 'A ring in which each element emits a smaller child ring.',
+                        'parameters' => ['depth:int', 'N:int', 'R:float', 'childScale:float', 'axis:int', 'primitive:symbol', 'material:symbol'],
+                        'uses' => ['filigree', 'ornaments', 'recursive frames', 'decorative lattices'],
+                        'pseudocode' => "RecursiveRing(depth N R childScale axis primitive material) 1 ->\n    RecursiveRingNode(depth N R childScale axis primitive material)\n\nRecursiveRingNode(depth N R childScale axis primitive material) 1 ->\n    [ Ring(N R axis 1 primitive material) ]\n    ?(depth > 0) RecursiveRingChildren(0 depth N R childScale axis primitive material)\n\nRecursiveRingChildren(i depth N R childScale axis primitive material) ?(i < int(N)) ->\n    [\n        RotateAroundAxis(axis, 360*i/N)\n        TranslateRadial(axis, R)\n        S(childScale childScale childScale)\n        RecursiveRingNode(depth-1 N R*childScale childScale axis primitive material)\n    ]\n    RecursiveRingChildren(i+1 depth N R childScale axis primitive material)",
+                    ],
+                    [
+                        'name' => 'L-system Hybrid',
+                        'description' => 'An L-system path mapped to repeated ProGen3D instances.',
+                        'parameters' => ['axiom:string', 'rules:symbol', 'iterations:int', 'segScale:float', 'turnAngle:float', 'axis:int', 'primitive:symbol', 'material:symbol'],
+                        'uses' => ['botanical structures', 'branching ornament', 'recursive skeletal systems', 'procedural vines'],
+                        'pseudocode' => "LSystemHybrid(axiom rules iterations segScale turnAngle axis primitive material) 1 ->\n    seq F(axiom rules iterations) ExpandLSystem(axiom,rules,iterations)\n    InterpretLSystem(seq segScale turnAngle axis primitive material)",
+                    ],
+                ],
+            ],
+            [
+                'title' => 'Symmetry, modulation, and composition',
+                'intro' => 'These controls adapt any motif family and are especially useful when composing architectural systems from smaller parts.',
+                'motifs' => [
+                    [
+                        'name' => 'Mirror / Dihedral controls',
+                        'description' => 'Attach symmetry logic to any motif to create bilateral, radial, or paired-lobe structure without rewriting the base rule.',
+                        'parameters' => ['mirrorX:int', 'mirrorY:int', 'mirrorZ:int', 'lobes:int', 'axis:int'],
+                        'uses' => ['paired canopies', 'bilateral frames', 'dihedral lobes', 'symmetry studies'],
+                        'pseudocode' => "MirrorX(rule) -> [ Mx ] rule\nMirrorY(rule) -> [ My ] rule\nMirrorZ(rule) -> [ Mz ] rule\n\nDihedral(rule axis lobes) ->\n    DihedralIter(0 lobes rule axis)\n\nDihedralIter(i lobes rule axis) ?(i < int(lobes)) ->\n    [ RotateAroundAxis(axis, 360*i/lobes) rule ]\n    [ RotateAroundAxis(axis, 360*i/lobes + 180/lobes) MirrorPerpToAxis(axis) rule ]\n    DihedralIter(i+1 lobes rule axis)",
+                    ],
+                    [
+                        'name' => 'Example compositions',
+                        'description' => 'Use one foundational motif as the primary structure, then layer one or two supporting motifs for system-level results.',
+                        'parameters' => ['primaryArchetype:symbol', 'secondaryArchetype:symbol', 'axis:int', 'taper:float', 'twist:float'],
+                        'uses' => ['tower pavilion', 'bridge', 'stadium', 'hybrid systems'],
+                        'pseudocode' => "TowerPavilion(axis) 1 ->\n    [ Stack(12 1.2 axis 0.92 4 Column stone) ]\n    [ TranslateAlongAxis(axis, 14.4) RingStack(4 18 4.0 0.7 axis 0.94 Beam metal) ]\n    [ TranslateAlongAxis(axis, 14.4) RadialCanopy(12 4 3.8 0.6 2.0 axis Rib glass) ]\n\nBridge(axis) 1 ->\n    [ Band(24 18 axis 1 Deck concrete) ]\n    [ VaultedRingGrid(18 4 14 axis ring Arch steel) ]\n    [ Grid(18 4 1.0 1.2 2 Truss metal) ]",
+                    ],
+                ],
+            ],
+        ],
+    ];
+}
+
+
+function site_intelligent_writer_reference_text(): string
+{
+    $parts = [];
+    $parts[] = "LIVE PARSER RULES";
+    foreach (site_reference_sections() as $section) {
+        $parts[] = $section['title'] . ': ' . ($section['intro'] ?? '');
+        foreach (($section['items'] ?? []) as $item) {
+            $parts[] = '- ' . ($item['syntax'] ?? '') . ' — ' . ($item['meaning'] ?? '');
+        }
+    }
+
+    $parts[] = "DOCUMENTATION HIGHLIGHTS";
+    foreach (site_docs_sections() as $section) {
+        $parts[] = $section['title'] . ': ' . implode(' ', array_map('strval', $section['body'] ?? []));
+        foreach (($section['bullets'] ?? []) as $bullet) {
+            $parts[] = '- ' . $bullet;
+        }
+    }
+
+    $parts[] = "STRUCTURAL ARCHETYPE REFERENCE";
+    $archetypes = site_archetype_reference();
+    foreach (($archetypes['categories'] ?? []) as $category) {
+        $parts[] = ($category['title'] ?? 'Category') . ': ' . ($category['intro'] ?? '');
+        foreach (($category['motifs'] ?? []) as $motif) {
+            $parts[] = '* ' . ($motif['name'] ?? 'Motif') . ' — ' . ($motif['description'] ?? '');
+            if (!empty($motif['parameters'])) {
+                $parts[] = '  params: ' . implode(', ', array_map('strval', $motif['parameters']));
+            }
+            if (!empty($motif['uses'])) {
+                $parts[] = '  uses: ' . implode(', ', array_map('strval', $motif['uses']));
+            }
+        }
+    }
+
+    $parts[] = "INTELLIGENT WRITER REFERENCE PRIORITIES";
+    $parts[] = '- Prefer current live rule headers: RuleName(vars_resolve) repeat_expr -> { rule body } or RuleName(vars_resolve) repeat_expr -> pre_rules | main_bodyrules | post_rules.';
+    $parts[] = '- Treat repeat_expr as something that should resolve to an integer count.';
+    $parts[] = '- Use Start -> body only for the top entry rule or for very simple helper rules with no resolved variables.';
+    $parts[] = '- Use conditional rule forms directly when needed: ?(cond_expr) Rule and ?(cond_expr) rulemain : rulealt.';
+    $parts[] = '- Use grouped blocks [ ... ] inside rule bodies to build composable structure.';
+    $parts[] = '- Use ranged variables with R name ( min max ) or R* name ( min max ) inside rule bodies only, never as standalone top-level declarations.';
+    $parts[] = '- Keep math compact with no spaces once the expression begins.';
+
+    $parts[] = "EXECUTION ADAPTATION RULES";
+    $parts[] = '- The live parser is stricter than the archetype pseudocode. Use executable grammar syntax only.';
+    $parts[] = '- Use only supported transforms: T ( x y z ), S ( sx sy sz ), A ( angle axis ), optional DS/DT and DSX/DSY/DSZ DTX/DTY/DTZ.';
+    $parts[] = '- Use only supported instances: I ( Cube texture scale ), I ( CubeX texture scale ), I ( CubeY texture scale ), I ( CubeZ texture scale ).';
+    $parts[] = '- Include a visible base/plinth under the structure.';
+    $parts[] = '- Favor grouped blocks [ ... ] and readable helper rules over unsupported pseudocode operators like RotateAroundAxis or TranslateRadial.';
+    $parts[] = '- Adapt archetype logic into executable rule expansions using T/S/A, current conditional syntax, current rule-header syntax, and helper rules.';
+    $parts[] = '- Use cube-based geometry only unless the prompt explicitly requires a beam-like orientation, then use CubeX/CubeY/CubeZ.';
+    return implode("\n", $parts);
+}
+
+function site_intelligent_writer_reference_excerpt(): array
+{
+    return [
+        'Uses the site documentation, syntax reference, texture presets, and structural archetype library as hidden prompt context.',
+        'Prioritises the current live rule forms: RuleName(vars_resolve) repeat_expr headers, segmented pre|main|post bodies, conditional rule calls, and rule-body-only ranged variables.',
+        'Runs a first OpenAI pass to research equations, proportions, and the parts implied by the shape description before the final grammar-writing call.',
+        'Keeps the API key on the server and returns titled grammar drafts only.',
+        'Drafts are still parser-checked client-side, retried on parser errors, opened in editor.php, and counted for cube output just like the regular Writer page.',
+    ];
+}

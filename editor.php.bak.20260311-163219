@@ -1,0 +1,417 @@
+<?php
+/* progen3d-editor-single-runtime */
+require __DIR__ . '/includes/bootstrap.php';
+require_login();
+$user = current_user();
+$initialFileId = (int) ($_GET['file'] ?? 0);
+$copyFileId = (int) ($_GET['copy'] ?? 0);
+$example = site_example_by_slug($_GET['example'] ?? '');
+$editorHead = <<<'HTML'
+<link rel="stylesheet" href="assets/editor/css/editor.css">
+<link rel="stylesheet" href="assets/editor/css/editor-redesign.css">
+<link rel="stylesheet" href="assets/editor/css/editor-layout-target.css">
+<link rel="stylesheet" href="assets/editor/css/editor-diagnostics.css">
+<style>
+  .editor-inline-shell {
+    background: #0b1120;
+    min-height: min(100vh, 1560px);
+  }
+  .editor-stage.panel-fill {
+    padding: 0;
+    overflow: hidden;
+    background: rgba(2, 6, 23, .92);
+  }
+  .editor-stage .app-shell {
+    border-radius: 0;
+    min-height: 1320px;
+  }
+  .editor-stage #nameId,
+  .editor-stage #nameChooser,
+  .editor-stage #saveBtn,
+  .editor-stage #openJsonBtn,
+  .editor-stage #exportJsonBtn {
+    display: none !important;
+  }
+  .editor-stage .wrap {
+    padding-top: 0 !important;
+  }
+  @media (max-width: 1040px) {
+    .editor-stage .app-shell {
+      min-height: 1200px;
+    }
+  }
+</style>
+HTML;
+render_header('Editor', 'editor', ['body_class' => 'editor-integrated-page', 'extra_head' => $editorHead]);
+?>
+<main class="editor-page-shell">
+  <section class="site-shell editor-topbar editor-topbar--compact">
+    <div class="editor-topbar__main">
+      <span class="page-kicker">Inline authoring workspace</span>
+      <h1>Grammar editor</h1>
+      <p class="page-intro">A wider, calmer workspace with the project rail on the left and the inline grammar IDE taking the full stage on the right.</p>
+    </div>
+    <div class="editor-topbar__meta" aria-label="Editor highlights">
+      <span class="editor-meta-pill">Inline modular editor</span>
+      <span class="editor-meta-pill">SVEC viewer</span>
+      <span class="editor-meta-pill">Gallery publishing</span>
+      <a class="btn btn-secondary" href="examples.php">Examples</a>
+      <a class="btn btn-secondary" href="reference.php">Reference</a>
+      <a class="btn btn-primary" href="files.php">My files</a>
+    </div>
+  </section>
+
+  <section class="site-shell editor-layout editor-layout--refined">
+    <aside class="editor-sidebar panel">
+      <div class="sidebar-section sidebar-section--file">
+        <span class="sidebar-kicker">Project</span>
+        <label>Title
+          <input id="siteFileTitle" type="text" maxlength="160" placeholder="Untitled grammar">
+        </label>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-section__head">
+          <h2>Actions</h2>
+          <span class="sidebar-caption">Draft, run, and publish</span>
+        </div>
+        <div class="stack-actions stack-actions--grid">
+          <button id="newFileBtn" class="btn btn-secondary" type="button">New</button>
+          <button id="runGrammarBtn" class="btn btn-secondary" type="button">Run</button>
+          <button id="saveGrammarBtn" class="btn btn-primary" type="button">Save</button>
+          <button id="publishGrammarBtn" class="btn btn-primary" type="button">Publish</button>
+          <button id="unpublishGrammarBtn" class="btn btn-secondary stack-actions__wide" type="button">Unpublish</button>
+        </div>
+      </div>
+
+      <div class="sidebar-section sidebar-section--status">
+        <div class="sidebar-section__head">
+          <h2>Status</h2>
+          <span class="sidebar-caption">Current workspace state</span>
+        </div>
+        <div class="sidebar-status-grid">
+          <div class="sidebar-status-item">
+            <span class="sidebar-status-label">Current file</span>
+            <strong id="currentFileLabel">New unsaved grammar</strong>
+          </div>
+          <div class="sidebar-status-item">
+            <span class="sidebar-status-label">Editor</span>
+            <strong id="editorStatus">Loading editor…</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-section__head">
+          <h2>Workflow</h2>
+          <span class="sidebar-caption">How this page is arranged</span>
+        </div>
+        <p>Keep authoring in the wide inline editor, use the SVEC viewer to inspect forms, then save drafts or publish directly from this rail.</p>
+      </div>
+      <?php if ($example): ?>
+        <div class="sidebar-section sidebar-section--accent">
+          <div class="sidebar-section__head">
+            <h2>Loaded example</h2>
+            <span class="sidebar-caption">Ready on load</span>
+          </div>
+          <p><?= e($example['title']) ?> will be injected into the editor as soon as the runtime is ready.</p>
+        </div>
+      <?php endif; ?>
+      <div class="sidebar-section">
+        <div class="sidebar-section__head">
+          <h2>Reference links</h2>
+          <span class="sidebar-caption">Keep nearby while authoring</span>
+        </div>
+        <div class="help-links help-links--grid">
+          <a class="btn btn-secondary btn-sm" href="docs.php">Docs</a>
+          <a class="btn btn-secondary btn-sm" href="reference.php">Reference</a>
+          <a class="btn btn-secondary btn-sm" href="examples.php">Examples</a>
+        </div>
+      </div>
+    </aside>
+
+    <section class="editor-stage panel panel-fill">
+      <div class="editor-inline-shell">
+        <div class="app-shell">
+          <div class="editor-live-status" aria-live="polite" hidden>
+            <span id="status" class="pill pill-status ready">Ready. · Start: Start · Reachable: 1</span>
+            <span id="autoRunState" class="pill pill-auto idle">Auto-run idle</span>
+          </div>
+
+          <div class="wrap">
+            <section class="card input-card">
+              <header>
+                <div class="card-title-wrap">
+                  <h2>Grammar Input</h2>
+                  <p class="card-subtitle">Write grammar rules on the left and let the viewer refresh automatically after four seconds of idle time.</p>
+                </div>
+                <div class="toolbar" id="toolbar">
+                  <input id="nameId" class="text-input" placeholder="unique_name_identifier" aria-label="Type or choose identifier">
+                  <select id="nameChooser" class="select-input" aria-label="Choose saved identifier"><option value="" disabled selected>No saved entries</option></select>
+                  <button id="saveBtn" class="btn_save" title="Save To JSON" type="button">SaveToJSON</button>
+                  <button id="wrapBtn" class="btn ghost" title="Toggle word wrap" type="button">⤶ Wrap: Off</button>
+                  <button id="go" class="btn" type="button">Run Grammar</button>
+                  <button id="btn-random" class="btn" type="button">Randomize</button>
+                  <button id="clr" class="btn secondary" type="button">Clear</button>
+                  <button id="openJsonBtn" class="btn ghost" type="button">Open JSON</button>
+                  <button id="exportJsonBtn" class="btn secondary" type="button">Export JSON</button>
+                  <button id="exportSTL" class="btn" type="button">Export STL</button>
+                </div>
+              </header>
+              <div class="body">
+                <div class="codewrap" id="codewrap">
+                  <pre id="hl" class="highlighter"></pre>
+                  <textarea id="src" wrap="off" spellcheck="false" placeholder="Enter Visual Grammar..." aria-label="Grammar code editor" style="white-space: pre;">Start -&gt; I ( Cube metal 0.25 )</textarea>
+                  <div id="se-hit" aria-hidden="true"><pre id="se-hit-pre" class="highlighter"></pre></div>
+                  <div id="se-tooltip" role="tooltip"></div>
+                </div>
+              </div>
+            </section>
+
+            <section class="card viewer-card">
+              <header>
+                <div class="card-title-wrap">
+                  <h2>Scene Viewer</h2>
+                  <p class="card-subtitle">XZ construction grid, SVEC orbit camera, an orientation axis widget, and XZ-plane auto orbit are built into the viewport.</p>
+                </div>
+                <div class="toolbar viewer-toolbar">
+                  <button id="orbitToggle" class="btn ghost" title="Play/Pause slow orbit" type="button">▶ Auto Orbit</button>
+                </div>
+              </header>
+              <div class="body viewer-body">
+                <div class="viewer-stage">
+            <canvas id="glcanvas" aria-label="WebGL scene canvas">Your browser does not support the canvas element.</canvas>
+          </div>
+              </div>
+            </section>
+
+            <section class="card output-card">
+              <header>
+                <div class="card-title-wrap">
+                  <h2>Console</h2>
+                  <p class="card-subtitle">Run log, parser feedback, errors, and quick syntax cues directly beneath the scene viewer.</p>
+                </div>
+              </header>
+              <div class="body">
+                <div id="out" class="console-panel" aria-live="polite"></div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </section>
+  </section>
+</main>
+<script src="assets/editor/js/core/helpers.js"></script>
+<script src="assets/editor/js/core/renderer.js"></script>
+<script src="assets/editor/js/core/scene.js"></script>
+<script src="assets/editor/js/core/scope-context.js"></script>
+<script src="assets/editor/js/core/variables.js"></script>
+<script src="assets/editor/js/core/substitution.js"></script>
+<script src="assets/editor/js/core/math-eval.js"></script>
+<script src="assets/editor/js/core/lexer-token.js"></script>
+<script src="assets/editor/js/core/grammar.js"></script>
+<script src="assets/editor/js/optional/smart-editor-v0.4.js"></script>
+<script src="assets/editor/js/app/editor-app.js"></script>
+<script src="assets/editor/js/app/storage.js"></script>
+<script src="assets/editor/js/optional/progen3d-unified-grammar.js"></script>
+<script src="assets/editor/js/app/actions-extra.js"></script>
+<script src="assets/editor/js/app/ui-redesign.js"></script>
+<script src="assets/editor/js/app/editor-diagnostics.js"></script>
+<script>
+const csrfToken = <?= json_encode(csrf_token()) ?>;
+const initialFileId = <?= json_encode($initialFileId) ?>;
+const copyFileId = <?= json_encode($copyFileId) ?>;
+const exampleContent = <?= json_encode($example['grammar'] ?? null, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+const exampleTitle = <?= json_encode($example['title'] ?? null, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+const writerDraftStorageKey = 'p3d_writer_draft_v1';
+let currentFileId = initialFileId || null;
+let editorReady = false;
+let pendingContent = null;
+
+function editorTextArea() {
+  return document.getElementById('src');
+}
+
+function getEditorText() {
+  const textarea = editorTextArea();
+  return textarea ? textarea.value : '';
+}
+
+function setEditorText(value, runAfter = true) {
+  const textarea = editorTextArea();
+  if (!textarea) return;
+  textarea.value = value || '';
+  textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  textarea.dispatchEvent(new Event('change', { bubbles: true }));
+  if (runAfter) {
+    const goBtn = document.getElementById('go');
+    if (goBtn) goBtn.click();
+  }
+}
+
+function setStatus(message) {
+  const el = document.getElementById('editorStatus');
+  if (el) el.textContent = message;
+}
+
+function setCurrentLabel(text) {
+  const el = document.getElementById('currentFileLabel');
+  if (el) el.textContent = text;
+}
+
+async function api(action, payload = {}, method = 'POST') {
+  const options = {
+    method,
+    headers: { 'Accept': 'application/json', 'X-CSRF-Token': csrfToken }
+  };
+  if (method !== 'GET') {
+    options.headers['Content-Type'] = 'application/json';
+    options.body = JSON.stringify(payload);
+  }
+  const response = await fetch('api/file.php?action=' + encodeURIComponent(action), options);
+  const data = await response.json();
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || 'Request failed');
+  }
+  return data;
+}
+
+async function loadInitialData() {
+  try {
+    if (initialFileId) {
+      const res = await fetch('api/file.php?action=get&id=' + encodeURIComponent(initialFileId), { headers: { 'Accept': 'application/json' } });
+      const data = await res.json();
+      if (data.ok) {
+        document.getElementById('siteFileTitle').value = data.file.title || '';
+        setCurrentLabel(data.file.title || ('File #' + data.file.id));
+        pendingContent = data.file.content || '';
+        setStatus(data.file.is_published ? 'Published file loaded.' : 'Draft loaded.');
+      }
+    } else if (copyFileId) {
+      const res = await fetch('api/file.php?action=get_public&id=' + encodeURIComponent(copyFileId), { headers: { 'Accept': 'application/json' } });
+      const data = await res.json();
+      if (data.ok) {
+        currentFileId = null;
+        document.getElementById('siteFileTitle').value = (data.file.title || 'Gallery copy') + ' copy';
+        setCurrentLabel('New copy from gallery');
+        pendingContent = data.file.content || '';
+        setStatus('Gallery item copied into editor as a new draft.');
+      }
+    } else if (exampleContent) {
+      currentFileId = null;
+      document.getElementById('siteFileTitle').value = exampleTitle || 'Example grammar';
+      setCurrentLabel('Example template');
+      pendingContent = exampleContent;
+      setStatus('Example loaded into editor.');
+    } else {
+      const writerDraft = consumeWriterDraft();
+      if (writerDraft && writerDraft.content) {
+        currentFileId = null;
+        document.getElementById('siteFileTitle').value = writerDraft.title || 'Generated grammar';
+        setCurrentLabel('Grammar writer draft');
+        pendingContent = writerDraft.content;
+        setStatus('Grammar writer draft loaded into editor.');
+      } else {
+        pendingContent = 'Start -> I ( Cube brushedAluminum 0.25 )';
+        setStatus('New grammar ready.');
+      }
+    }
+    if (editorReady && pendingContent !== null) {
+      setEditorText(pendingContent, true);
+      pendingContent = null;
+    }
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+function consumeWriterDraft() {
+  try {
+    const raw = window.localStorage.getItem(writerDraftStorageKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    window.localStorage.removeItem(writerDraftStorageKey);
+    if (!parsed || typeof parsed !== 'object') return null;
+    return {
+      title: typeof parsed.title === 'string' ? parsed.title : '',
+      content: typeof parsed.content === 'string' ? parsed.content : ''
+    };
+  } catch (error) {
+    return null;
+  }
+}
+
+function initIntegratedEditorPage() {
+  editorReady = true;
+  if (pendingContent !== null) {
+    setEditorText(pendingContent, true);
+    pendingContent = null;
+  }
+  setStatus(document.getElementById('editorStatus').textContent === 'Loading editor…' ? 'Editor ready.' : document.getElementById('editorStatus').textContent);
+
+  document.getElementById('runGrammarBtn').addEventListener('click', () => {
+    const goBtn = document.getElementById('go');
+    if (goBtn) {
+      goBtn.click();
+      setStatus('Grammar executed.');
+    } else {
+      setStatus('Editor runtime is still loading.');
+    }
+  });
+
+  document.getElementById('newFileBtn').addEventListener('click', () => {
+    currentFileId = null;
+    document.getElementById('siteFileTitle').value = '';
+    setCurrentLabel('New unsaved grammar');
+    setEditorText('Start -> I ( Cube brushedAluminum 0.25 )', false);
+    setStatus('New grammar created.');
+  });
+
+  document.getElementById('saveGrammarBtn').addEventListener('click', async () => {
+    try {
+      const title = document.getElementById('siteFileTitle').value.trim() || 'Untitled grammar';
+      const content = getEditorText();
+      const data = await api('save', { file_id: currentFileId, title, content });
+      currentFileId = data.file.id;
+      document.getElementById('siteFileTitle').value = data.file.title;
+      setCurrentLabel(data.file.title);
+      setStatus('Saved to your file library.');
+    } catch (error) {
+      setStatus(error.message);
+    }
+  });
+
+  document.getElementById('publishGrammarBtn').addEventListener('click', async () => {
+    try {
+      const title = document.getElementById('siteFileTitle').value.trim() || 'Untitled grammar';
+      const content = getEditorText();
+      const data = await api('publish', { file_id: currentFileId, title, content });
+      currentFileId = data.file.id;
+      document.getElementById('siteFileTitle').value = data.file.title;
+      setCurrentLabel(data.file.title);
+      setStatus('Published to gallery.');
+    } catch (error) {
+      setStatus(error.message);
+    }
+  });
+
+  document.getElementById('unpublishGrammarBtn').addEventListener('click', async () => {
+    if (!currentFileId) {
+      setStatus('Save the grammar before unpublishing.');
+      return;
+    }
+    try {
+      await api('unpublish', { file_id: currentFileId });
+      setStatus('Removed from gallery.');
+    } catch (error) {
+      setStatus(error.message);
+    }
+  });
+
+  loadInitialData();
+}
+
+window.addEventListener('load', initIntegratedEditorPage, { once: true });
+</script>
+<?php render_footer(); ?>

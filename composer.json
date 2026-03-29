@@ -1,0 +1,13 @@
+{
+  "name": "progen3d/site",
+  "description": "ProGen3D site Firebase migration runtime",
+  "type": "project",
+  "require": {
+    "php": "^8.2",
+    "google/cloud-firestore": "^1.54",
+    "kreait/firebase-php": "^7.18"
+  },
+  "config": {
+    "sort-packages": true
+  }
+}
