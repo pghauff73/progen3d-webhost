@@ -1,0 +1,59 @@
+# OS and editor clutter
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+service-account*.json
+firebase-adminsdk*.json
+
+# Dependency directories
+node_modules/
+vendor/
+
+# Build and cache output
+dist/
+build/
+coverage/
+.cache/
+cache/
+tmp/
+temp/
+logs/
+*.log
+
+# Archives and installers
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.gz
+*.7z
+*.rar
+*.msi
+*.exe
+
+# Backups and local copies
+*.bak
+*.backup
+*.old
+*.orig
+
+# Python helpers
+__pycache__/
+*.pyc
+
+# Local uploads or generated binaries
+storage/
+uploads/
