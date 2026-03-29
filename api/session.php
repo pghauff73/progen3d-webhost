@@ -35,6 +35,22 @@ if ($action === 'logout') {
     session_json_response(['ok' => true]);
 }
 
+if ($action === 'status') {
+    $user = current_user();
+    session_json_response([
+        'ok' => true,
+        'authenticated' => (bool) $user,
+        'csrf_token' => csrf_token(),
+        'user' => $user ? [
+            'id' => (string) ($user['uid'] ?? $user['id'] ?? ''),
+            'username' => (string) ($user['username'] ?? ''),
+            'email' => (string) ($user['email'] ?? ''),
+            'role' => (string) ($user['role'] ?? 'user'),
+        ] : null,
+        'credits' => $user ? firebase_credit_summary($user) : null,
+    ]);
+}
+
 if ($action !== 'login') {
     session_json_response(['ok' => false, 'error' => 'Unknown action.'], 400);
 }
@@ -67,6 +83,8 @@ try {
             'email' => (string) ($user['email'] ?? ''),
             'role' => (string) ($user['role'] ?? 'user'),
         ],
+        'credits' => firebase_credit_summary($user),
+        'csrf_token' => csrf_token(),
     ]);
 } catch (Throwable $error) {
     session_json_response(['ok' => false, 'error' => $error->getMessage()], 500);

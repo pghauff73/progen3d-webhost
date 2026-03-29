@@ -36,6 +36,26 @@
     statusBadge.className = `pill pill-status ${tone}`;
   }
 
+  function insertTextAtCursor(text) {
+    const value = String(text || '');
+    if (!sourceInput) return;
+    const start = Number.isFinite(sourceInput.selectionStart) ? sourceInput.selectionStart : sourceInput.value.length;
+    const end = Number.isFinite(sourceInput.selectionEnd) ? sourceInput.selectionEnd : start;
+    const before = sourceInput.value.slice(0, start);
+    const after = sourceInput.value.slice(end);
+    sourceInput.value = before + value + after;
+    const nextPos = start + value.length;
+    sourceInput.selectionStart = nextPos;
+    sourceInput.selectionEnd = nextPos;
+    sourceInput.focus();
+    sourceInput.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  function refreshRendererTextures() {
+    renderer.setScene?.(scene);
+    renderer.invalidate?.();
+  }
+
   function setAutoRunState(message, tone = 'idle') {
     if (!autoRunBadge) return;
     autoRunBadge.textContent = message;
@@ -152,6 +172,7 @@
     }
     scene = new Scene();
     renderer = new WebGLSceneRenderer('#glcanvas', { wireframe: false });
+    window.__PG3D_ACTIVE_RENDERER = renderer;
     renderer.setScene(scene);
     logInfo('Renderer initialised with SVEC orbit camera, fit/reset controls, XZ grid, and orientation axis widget.');
   } catch (err) {
@@ -819,4 +840,5 @@
   setAutoRunState('Auto-run idle', 'idle');
   if (debugToggle) debugToggle.checked = isDebugEnabled();
   runGrammarPipeline(sourceInput.value || '', 'manual');
+  window.dispatchEvent(new CustomEvent('p3d:rendererready'));
 })();

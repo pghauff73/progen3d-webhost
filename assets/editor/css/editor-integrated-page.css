@@ -251,6 +251,12 @@ body.editor-integrated-page[data-sidebar-collapsed="1"] .editor-stage {
   font-size: 0.92rem;
   color: rgba(226, 232, 240, 0.82);
 }
+.ai-assistant-credits {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.ai-assistant-credits .sidebar-status-item strong {
+  line-height: 1.35;
+}
 .ai-assistant-output {
   border: 1px solid rgba(148, 163, 184, 0.22);
   background: rgba(15, 23, 42, 0.56);
@@ -288,6 +294,77 @@ body.editor-integrated-page[data-sidebar-collapsed="1"] .editor-stage {
 }
 .ai-assistant-toolbar .btn {
   flex: 1 1 140px;
+}
+.texture-library-panel {
+  display: grid;
+  gap: 12px;
+}
+.texture-library-form {
+  display: grid;
+  gap: 10px;
+}
+.texture-library-form input[type="range"] {
+  width: 100%;
+}
+.texture-library-alpha-readout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.texture-library-list {
+  display: grid;
+  gap: 8px;
+  max-height: 420px;
+  overflow: auto;
+  padding-right: 4px;
+}
+.texture-slot-card {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(2, 6, 23, 0.34);
+}
+.texture-slot-card.is-empty {
+  opacity: 0.82;
+}
+.texture-slot-preview {
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background:
+    linear-gradient(45deg, rgba(148, 163, 184, 0.16) 25%, transparent 25%, transparent 75%, rgba(148, 163, 184, 0.16) 75%, rgba(148, 163, 184, 0.16)),
+    linear-gradient(45deg, rgba(148, 163, 184, 0.16) 25%, transparent 25%, transparent 75%, rgba(148, 163, 184, 0.16) 75%, rgba(148, 163, 184, 0.16));
+  background-size: 12px 12px;
+  background-position: 0 0, 6px 6px;
+  object-fit: cover;
+}
+.texture-slot-body {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.texture-slot-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.texture-slot-name {
+  font-weight: 700;
+}
+.texture-slot-meta {
+  color: rgba(226, 232, 240, 0.76);
+  font-size: 0.86rem;
+}
+.texture-slot-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 .editor-stage.panel-fill {
   display: flex;
@@ -469,11 +546,19 @@ body.editor-integrated-page[data-sidebar-collapsed="1"] .editor-stage {
     margin: 0;
   }
   .ai-assistant-grid,
-  .ai-assistant-toolbar {
+  .ai-assistant-toolbar,
+  .ai-assistant-credits {
     grid-template-columns: minmax(0, 1fr);
     display: grid;
   }
   .ai-assistant-toolbar .btn {
     flex: initial;
+  }
+  .texture-slot-card {
+    grid-template-columns: 48px minmax(0, 1fr);
+  }
+  .texture-slot-preview {
+    width: 48px;
+    height: 48px;
   }
 }

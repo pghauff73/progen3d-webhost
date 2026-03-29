@@ -3,6 +3,7 @@
 require __DIR__ . '/includes/bootstrap.php';
 require_login();
 $user = current_user();
+$creditSummary = firebase_credit_summary($user);
 $builtinRuleLibrary = firebase_builtin_rule_library_payload(false);
 $initialFileId = trim((string) ($_GET['file'] ?? ''));
 $copyFileId = trim((string) ($_GET['copy'] ?? ''));
@@ -60,10 +61,15 @@ render_header('Editor', 'editor', ['body_class' => 'editor-integrated-page', 'ex
       <a href="gallery.php">Gallery</a>
       <a class="active" href="editor.php">Editor</a>
       <a href="files.php"><?= is_admin($user) ? 'All Files' : 'My Files' ?></a>
+      <a href="account.php">Account</a>
       <?php if (is_admin($user)): ?>
         <a href="BuiltinRuleLibrary.php">Builtin Rules</a>
         <a href="admin.php">Admin</a>
       <?php endif; ?>
+      <span class="nav-pill nav-pill--credits" data-site-credits data-credit-label="AI Credits">
+        <strong data-site-credits-available><?= e((string) ($creditSummary['available'] ?? 0)) ?></strong>
+        <span data-site-credits-detail><?= !empty($creditSummary['reserved']) ? e((string) ($creditSummary['reserved'] ?? 0)) . ' reserved' : 'available' ?></span>
+      </span>
       <a class="nav-pill" href="logout.php">Logout · <?= e($user['username']) ?></a>
     </nav>
   </section>
@@ -137,6 +143,24 @@ render_header('Editor', 'editor', ['body_class' => 'editor-integrated-page', 'ex
             <button id="aiExplainSelectionBtn" class="btn btn-secondary" type="button">Explain Selection</button>
             <button id="aiApplyGrammarBtn" class="btn btn-primary" type="button" disabled>Apply Result</button>
           </div>
+          <div class="sidebar-status-grid ai-assistant-credits" aria-live="polite">
+            <div class="sidebar-status-item">
+              <span class="sidebar-status-label">Available credits</span>
+              <strong id="aiCreditsAvailable"><?= e((string) ($creditSummary['available'] ?? 0)) ?></strong>
+            </div>
+            <div class="sidebar-status-item">
+              <span class="sidebar-status-label">Reserved credits</span>
+              <strong id="aiCreditsReserved"><?= e((string) ($creditSummary['reserved'] ?? 0)) ?></strong>
+            </div>
+            <div class="sidebar-status-item">
+              <span class="sidebar-status-label">Next request estimate</span>
+              <strong id="aiCreditsEstimate">Select an AI action</strong>
+            </div>
+            <div class="sidebar-status-item">
+              <span class="sidebar-status-label">Last request cost</span>
+              <strong id="aiCreditsLastCost">No requests yet</strong>
+            </div>
+          </div>
           <div id="aiAssistantStatus" class="ai-assistant-status" aria-live="polite">Ready. The assistant uses the current grammar, selected text, and latest console error.</div>
           <section id="aiAssistantOutput" class="ai-assistant-output" hidden>
             <div class="ai-assistant-kv">
@@ -173,6 +197,47 @@ render_header('Editor', 'editor', ['body_class' => 'editor-integrated-page', 'ex
           <a class="btn btn-secondary btn-sm" href="docs.php">Docs</a>
           <a class="btn btn-secondary btn-sm" href="reference.php">Reference</a>
           <a class="btn btn-secondary btn-sm" href="examples.php">Examples</a>
+        </div>
+      </div>
+      <div class="sidebar-section sidebar-section--accent">
+        <div class="sidebar-section__head">
+          <h2>Texture Library</h2>
+          <span class="sidebar-caption" data-compact="2">Private user textures 1-20</span>
+        </div>
+        <div id="textureLibraryPanel" class="texture-library-panel">
+          <form id="textureUploadForm" class="texture-library-form">
+            <label for="textureSlotSelect">Slot
+              <select id="textureSlotSelect" class="text-input">
+                <?php for ($i = 1; $i <= 20; $i += 1): ?>
+                  <option value="usertexture<?= $i ?>">usertexture<?= $i ?></option>
+                <?php endfor; ?>
+              </select>
+            </label>
+            <label for="textureDisplayName">Display name
+              <input id="textureDisplayName" class="text-input" type="text" maxlength="120" placeholder="Stone, bark, glass, moss">
+            </label>
+            <label for="textureAlphaRange">Alpha
+              <input id="textureAlphaRange" type="range" min="0" max="1" step="0.01" value="1">
+            </label>
+            <div class="texture-library-alpha-readout">
+              <strong id="textureAlphaValue">1.00</strong>
+              <span class="muted">Applied in the renderer for this slot.</span>
+            </div>
+            <label for="textureFileInput">Upload image
+              <input id="textureFileInput" class="text-input" type="file" accept="image/png,image/jpeg,image/webp">
+            </label>
+            <label for="texturePromptInput">AI texture prompt
+              <textarea id="texturePromptInput" class="text-input" rows="4" placeholder="Example: weathered basalt stone tile with fine cracks and cool gray variation"></textarea>
+            </label>
+            <div class="help-links help-links--grid">
+              <button id="textureUploadBtn" class="btn btn-primary btn-sm" type="submit">Upload To Slot</button>
+              <button id="textureGenerateBtn" class="btn btn-primary btn-sm" type="button">Generate Texture</button>
+              <button id="textureSaveMetaBtn" class="btn btn-secondary btn-sm" type="button">Save Alpha</button>
+            </div>
+            <p class="muted" data-compact="2">Uploads are center-cropped and normalized to 512x512 PNG. AI generation requests a seamless square texture and then runs through the same 512x512 normalization pipeline. Use the grammar names <code>usertexture1</code> to <code>usertexture20</code>.</p>
+          </form>
+          <div id="textureLibraryStatus" class="ai-assistant-status" aria-live="polite">Loading your texture slots…</div>
+          <div id="textureLibraryList" class="texture-library-list"></div>
         </div>
       </div>
       <?php if (!empty($builtinRuleLibrary['items'])): ?>
@@ -620,16 +685,32 @@ async function initIntegratedEditorPage() {
       loadingScreen.style.opacity = '0';
       window.setTimeout(() => loadingScreen.remove(), 220);
     }
+    window.dispatchEvent(new CustomEvent('p3d:editorready'));
   }
 }
 
 window.addEventListener('load', initIntegratedEditorPage, { once: true });
 window.PG3DEditorPage = {
   csrfToken,
+  buildApiHeaders,
+  requestJson,
   getEditorText,
   getEditorSelectionText,
   setEditorText,
   setStatus,
+  insertTextAtCursor(text) {
+    const textarea = editorTextArea();
+    if (!textarea) return;
+    const value = String(text || '');
+    const start = Number.isFinite(textarea.selectionStart) ? textarea.selectionStart : textarea.value.length;
+    const end = Number.isFinite(textarea.selectionEnd) ? textarea.selectionEnd : start;
+    textarea.value = textarea.value.slice(0, start) + value + textarea.value.slice(end);
+    const nextPos = start + value.length;
+    textarea.selectionStart = nextPos;
+    textarea.selectionEnd = nextPos;
+    textarea.focus();
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  },
   getStatus() {
     const el = document.getElementById('editorStatus');
     return el ? (el.textContent || '') : '';
@@ -642,8 +723,23 @@ window.PG3DEditorPage = {
   runGrammar() {
     const goBtn = document.getElementById('editorRunBtn');
     if (goBtn) goBtn.click();
+  },
+  getRenderer() {
+    return window.__PG3D_ACTIVE_RENDERER || null;
+  },
+  refreshRendererTextures() {
+    const renderer = window.__PG3D_ACTIVE_RENDERER || null;
+    if (renderer && typeof renderer.invalidate === 'function') {
+      const goBtn = document.getElementById('editorRunBtn');
+      if (goBtn) {
+        goBtn.click();
+      } else {
+        renderer.invalidate();
+      }
+    }
   }
 };
 </script>
 <script defer src="assets/editor/js/app/ai-assistant.js?v=<?= e($editorAssetVersion) ?>"></script>
+<script defer src="assets/editor/js/app/texture-library.js?v=<?= e($editorAssetVersion) ?>"></script>
 <?php render_footer(); ?>

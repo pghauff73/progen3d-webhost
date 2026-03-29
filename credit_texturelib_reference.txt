@@ -1,0 +1,383 @@
+ProGen3D Credits And Texture Library Reference
+==============================================
+
+Last updated: 2026-03-29
+
+
+1. AI Credits System
+--------------------
+
+Purpose
+- Track and enforce per-user AI usage credits for OpenAI-powered grammar assistance.
+- Keep accounting auditable and server-side.
+- Support cross-host-safe balance mutations through Firestore transactions.
+
+Main data model
+- users/{uid}
+  - credit_balance
+  - credit_granted_lifetime
+  - credit_spent_lifetime
+  - credit_reserved
+  - credit_plan
+  - credit_updated_at
+
+- ai_usage/{usageId}
+  - One record per AI request.
+  - Tracks mode, model, status, token usage, estimated credits, final credits, request preview, errors, and timestamps.
+
+- credit_ledger/{entryId}
+  - Immutable accounting log for grants, debits, reservation events, refunds/releases, expiry, and admin adjustments.
+
+Key implementation files
+- /var/www/includes/bootstrap.php
+  - Normalizes credit fields into user records.
+  - Seeds new users with APP_DEFAULT_AI_CREDITS.
+  - Injects credit summary into the shared page shell.
+
+- /var/www/includes/firebase.php
+  - Firestore helpers for ai_usage and credit_ledger.
+  - Credit summary helper: firebase_credit_summary()
+  - Transaction-backed credit mutation helpers:
+    - firebase_ai_reserve_credits()
+    - firebase_ai_finalize_credits()
+    - firebase_ai_release_reserved_credits()
+    - firebase_grant_ai_credits()
+  - Backfill and grant helpers for operations/admin work.
+
+- /var/www/api/ai.php
+  - Reserves credits before OpenAI call.
+  - Finalizes credits from actual usage after success.
+  - Releases reservation on failure.
+  - Returns credits and usage in API responses.
+
+- /var/www/api/session.php
+  - action=status returns authenticated user state plus current credit summary.
+
+- /var/www/admin.php
+  - Admin grant UI.
+  - Recent ai_usage and credit_ledger history.
+  - Pagination and owner lookups in history tables.
+
+Supporting CLI tools
+- /var/www/bin/backfill-ai-credits.php
+  - Backfills existing users with starting credits.
+  - Supports idempotent reference ids.
+
+- /var/www/bin/grant-ai-credits.php
+  - Grants or adjusts a single user balance.
+
+Credit flow
+1. User submits AI request to /api/ai.php.
+2. Server estimates cost from request size and mode.
+3. Server reserves credits and writes ai_usage status=reserved.
+4. OpenAI request runs.
+5. On success, server finalizes actual credit cost from provider usage.
+6. On failure, reservation is released.
+7. Updated credits summary is returned to the client.
+
+User-facing credit display
+- Shared nav badge:
+  - Rendered from server and kept in sync client-side.
+- Editor AI assistant panel:
+  - Available credits
+  - Reserved credits
+  - Estimated next request cost
+  - Last request cost
+
+Relevant client files
+- /var/www/assets/site.js
+  - Shared credit state store: window.P3DCredits
+  - Badge rendering and refresh through session status endpoint.
+
+- /var/www/assets/editor/js/app/ai-assistant.js
+  - Consumes credits and usage returned by /api/ai.php.
+  - Updates the editor credit panel and shared badge.
+
+Important implementation notes
+- Credit accounting is server-side only.
+- Firestore transactions are used for cross-host safety.
+- credit_spent_lifetime is intended to reflect actual AI consumption, not arbitrary negative admin adjustments.
+- Existing users may require backfill/grants if created before the credit system was added.
+
+
+2. User Texture Library
+-----------------------
+
+Purpose
+- Allow each user to manage private renderer textures for grammar use.
+- Support uploaded textures and AI-generated textures.
+- Normalize all stored textures to 512x512 PNG.
+- Expose stable grammar names usertexture1 through usertexture20.
+
+Texture naming and limits
+- Fixed slots only:
+  - usertexture1
+  - usertexture2
+  - ...
+  - usertexture20
+
+- Maximum active texture count:
+  - 20 slots per user
+
+Design choice
+- Slots are fixed rather than user-defined names.
+- Grammar references remain stable.
+- Users replace or delete slot contents instead of creating unbounded asset names.
+
+Storage model
+- Firebase Storage
+  - Private PNG object per slot:
+    - user-textures/{uid}/usertextureN.png
+
+- Firestore
+  - Collection: user_textures
+  - Document id format:
+    - {uid}__{slot}
+
+Texture metadata fields
+- id
+- owner_uid
+- slot
+- display_name
+- storage_path
+- mime_type
+- width
+- height
+- alpha
+- source
+  - upload
+  - ai
+- prompt
+- active
+- created_at
+- updated_at
+
+Key implementation files
+- /var/www/includes/firebase.php
+  - Slot validation:
+    - firebase_normalize_texture_slot()
+  - Storage path helper:
+    - firebase_user_texture_storage_path()
+  - Firestore helpers:
+    - firebase_write_user_texture_record()
+    - firebase_fetch_user_texture_record()
+    - firebase_list_user_texture_records()
+    - firebase_delete_user_texture_record()
+    - firebase_user_texture_manifest()
+  - Storage helpers:
+    - firebase_store_user_texture()
+    - firebase_load_user_texture_bytes()
+    - firebase_delete_user_texture()
+  - Normalization helpers:
+    - firebase_texture_normalize_upload()
+    - firebase_texture_normalize_bytes()
+
+- /var/www/api/textures.php
+  - Texture library API.
+  - Owner-only manifest, image stream, upload, delete, update, and AI generate actions.
+
+- /var/www/bin/normalize_texture.py
+  - Pillow-based normalization helper.
+  - Converts source image to RGBA PNG.
+  - Center-crops/resizes to exactly 512x512.
+
+Server-side normalization
+- Uploads and AI-generated images both pass through the same normalization path.
+- Target output:
+  - PNG
+  - 512x512
+  - RGBA
+
+Why Pillow is used
+- The deployment did not have Imagick, GD, or ImageMagick CLI available.
+- python3-pil was installed on the host to provide deterministic resize/crop behavior.
+
+Texture API
+- GET /api/textures.php?action=list
+  - Returns 20-slot manifest for current user.
+
+- GET /api/textures.php?action=image&slot=usertextureN
+  - Streams PNG bytes for current user only.
+
+- POST /api/textures.php?action=upload
+  - multipart upload
+  - fields:
+    - slot
+    - display_name
+    - alpha
+    - texture file
+
+- POST /api/textures.php?action=update
+  - updates display_name and alpha for an existing slot.
+
+- POST /api/textures.php?action=delete
+  - deletes storage object and Firestore metadata for a slot.
+
+- POST /api/textures.php?action=generate
+  - generates a texture through OpenAI and stores it into a chosen slot.
+
+Ownership and access
+- Texture objects are not public.
+- API access requires authenticated user ownership.
+- image action only serves the current user’s slot.
+- Firestore metadata is filtered by owner uid.
+
+Alpha handling
+- Alpha is stored as metadata, not baked destructively into the image.
+- The renderer applies alpha per slot via renderer.textureAlpha[slot].
+- This allows the same stored PNG to remain normalized and reusable.
+
+
+3. Texture Library Editor Integration
+-------------------------------------
+
+Purpose
+- Give users a direct way to manage private textures from the editor.
+- Allow grammar insertion of slot names.
+- Load user textures into the renderer immediately.
+
+Main editor files
+- /var/www/editor.php
+  - Texture Library sidebar UI.
+  - Slot selector, display name, alpha slider, upload field, AI prompt, action buttons, and slot list container.
+
+- /var/www/assets/editor/js/app/texture-library.js
+  - Loads manifest from /api/textures.php?action=list
+  - Renders slot list
+  - Uploads textures
+  - Updates alpha/display name
+  - Deletes slot content
+  - Generates AI textures
+  - Inserts slot names into grammar
+  - Loads texture images into the renderer
+
+- /var/www/assets/editor/js/app/editor-app.js
+  - Exposes active renderer through window.__PG3D_ACTIVE_RENDERER
+  - Exposes helper hooks through window.PG3DEditorPage
+  - Emits renderer/editor ready events consumed by texture-library.js
+
+- /var/www/assets/editor/css/editor-integrated-page.css
+  - Texture library panel and slot card styling.
+
+Renderer integration
+- Existing renderer supports runtime texture injection through:
+  - setTexture(name, texData)
+
+- Existing renderer stores per-texture alpha through:
+  - textureAlpha[name]
+
+- texture-library.js behavior:
+  1. Load manifest
+  2. Preload transparent fallback textures for all 20 user slots
+  3. Fetch active slot images through owner-only image endpoint
+  4. Decode images in browser
+  5. Push texture pixel data into renderer
+  6. Apply alpha from metadata
+  7. Refresh scene
+
+Delete behavior
+- Empty or deleted slots are loaded into the renderer as transparent textures.
+- This avoids the renderer’s unknown-texture random-pattern fallback for deleted usertextureN slots.
+
+Grammar usage
+- Users reference their textures directly in grammar:
+  - I ( Cube usertexture1 0.25 )
+  - I ( CubeY usertexture7 0.18 )
+
+- The editor texture panel includes an Insert Name action to paste the selected slot into the grammar buffer.
+
+
+4. AI Texture Generation
+------------------------
+
+Purpose
+- Let users create a texture directly from a text prompt and store it into a slot.
+
+Implementation
+- Endpoint:
+  - POST /api/textures.php?action=generate
+
+- OpenAI call:
+  - POST https://api.openai.com/v1/images/generations
+  - Model default:
+    - gpt-image-1
+  - Configurable with environment variable:
+    - OPENAI_IMAGE_MODEL
+
+Prompt strategy
+- Server wraps the user prompt with constraints that bias toward usable material textures:
+  - seamless
+  - tileable
+  - square
+  - no text/icons
+  - no object silhouette
+  - no perspective/scene lighting
+  - flat material texture only
+
+Generation flow
+1. User selects slot and enters prompt in editor UI.
+2. Editor calls /api/textures.php?action=generate.
+3. Server requests image from OpenAI.
+4. Server decodes returned base64 image bytes.
+5. Server runs image through the same 512x512 normalization path as uploads.
+6. Server stores PNG to Firebase Storage.
+7. Server writes metadata to Firestore with source=ai and prompt saved.
+8. Editor refreshes manifest and renderer textures.
+
+Editor UI
+- Located in the Texture Library sidebar.
+- Fields used:
+  - slot
+  - display name
+  - alpha
+  - AI prompt
+- Action button:
+  - Generate Texture
+
+Operational note
+- AI generation currently does not use the AI credit system.
+- If desired later, texture generation can be priced and debited using the same credit ledger/reservation model as /api/ai.php.
+
+
+5. Environment And Operational Notes
+------------------------------------
+
+Required environment/config for credits
+- OPENAI_API_KEY for AI grammar assistant.
+- Firestore transaction-capable Firebase admin access for cross-host-safe credit mutations.
+
+Required environment/config for textures
+- Firebase Storage bucket configured through existing Firebase admin factory.
+- OPENAI_API_KEY for AI texture generation.
+- Optional:
+  - OPENAI_IMAGE_MODEL
+
+Host dependency added
+- python3-pil
+  - required by /var/www/bin/normalize_texture.py
+
+Security notes
+- Texture access is authenticated and owner-scoped.
+- Credits are enforced server-side.
+- Credit balances shown in UI are informational only; the backend remains authoritative.
+
+
+6. Suggested Next Steps
+-----------------------
+
+Credits
+- Charge credits for AI texture generation.
+- Add per-model/per-mode configurable pricing.
+- Add user-facing history page for credit and AI usage review.
+
+Texture library
+- Add inline preview modal or larger preview pane.
+- Add overwrite confirmation when replacing a populated slot.
+- Add batch preload optimization if manifest grows in complexity.
+- Add validation/telemetry for failed image decode in browser.
+- Add admin tooling if support staff needs visibility into user texture slots.
+
+Documentation
+- Add grammar docs/reference examples showing usertextureN usage.
+- Add short help text on how alpha affects rendering versus image pixels.
+

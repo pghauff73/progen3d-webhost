@@ -1,0 +1,214 @@
+Accounts Texture Library Cost/Model Reference
+============================================
+
+Date
+----
+2026-03-29
+
+Purpose
+-------
+This file documents how account-level texture model selection works, how AI texture generation is priced, and how those charges flow through the existing credit system.
+
+User Account Model Selection
+----------------------------
+The user account page is:
+
+- /var/www/account.php
+
+Each authenticated user can now store two separate AI model preferences:
+
+- `ai_model_preference`
+  Used for text/grammar assistant requests.
+- `ai_image_model_preference`
+  Used for AI texture generation requests.
+
+Associated timestamps are also stored:
+
+- `ai_model_updated_at`
+- `ai_image_model_updated_at`
+
+These fields are normalized in:
+
+- /var/www/includes/bootstrap.php
+
+and mapped to Firestore user documents in:
+
+- /var/www/includes/firebase.php
+
+Current Image Model Catalog
+---------------------------
+The image model pricing catalog is defined in:
+
+- /var/www/includes/firebase.php
+
+Helper functions:
+
+- `firebase_ai_image_model_catalog()`
+- `firebase_default_ai_image_model()`
+- `firebase_normalize_ai_image_model()`
+- `firebase_user_ai_image_model()`
+- `firebase_ai_image_model_costs()`
+- `firebase_ai_image_generation_cost_usd()`
+- `firebase_ai_image_generation_credits()`
+
+The current image models listed in the catalog are:
+
+- `gpt-image-1.5`
+- `gpt-image-1`
+- `gpt-image-1-mini`
+
+The default image model comes from:
+
+- `OPENAI_IMAGE_MODEL`
+
+If that environment variable is missing or invalid, the fallback default is:
+
+- `gpt-image-1.5`
+
+Current Texture Generation Settings
+-----------------------------------
+The texture generation endpoint is:
+
+- /var/www/api/textures.php?action=generate
+
+Current OpenAI image generation settings:
+
+- Quality: `medium`
+- Requested size: `1024x1024`
+- Background: `transparent`
+- Output format: `png`
+
+The generated image is then normalized to:
+
+- `512x512`
+- RGBA PNG
+
+Normalization uses the same backend path as uploaded textures, so uploads and AI-generated textures both end up in the same final storage format.
+
+Credit Pricing Scheme
+---------------------
+Credits are converted from USD using:
+
+- `firebase_ai_credit_value_usd()`
+
+Current conversion:
+
+- `1 credit = $0.01`
+
+Text AI requests are charged from actual token usage.
+
+AI texture generation is charged from a fixed per-image price based on:
+
+- selected image model
+- selected quality
+- selected size
+
+The current texture flow uses:
+
+- selected user image model
+- `medium`
+- `1024x1024`
+
+The helper used to calculate the texture generation credit cost is:
+
+- `firebase_ai_image_generation_credits($model, 'medium', '1024x1024')`
+
+Texture Credit Flow
+-------------------
+Texture generation uses the same credits system already used by text AI.
+
+Reservation:
+
+1. `api/textures.php` resolves the current user.
+2. It resolves the user image model with `firebase_user_ai_image_model($user)`.
+3. It calculates the estimated credits from the image pricing catalog.
+4. It reserves those credits with `firebase_ai_reserve_credits()`.
+
+Generation:
+
+5. The server calls the OpenAI Image API using the selected image model.
+6. The returned image bytes are normalized to `512x512` PNG.
+7. The texture is stored in the user texture slot.
+
+Settlement:
+
+8. The request is finalized with `firebase_ai_finalize_fixed_credits()`.
+9. The final credit cost is recorded in `ai_usage` and `credit_ledger`.
+
+Failure path:
+
+10. If generation or storage fails, reserved credits are released with `firebase_ai_release_reserved_credits()`.
+11. If the texture record was already created before settlement failed, the code attempts cleanup by deleting the texture object and metadata.
+
+Usage Metadata
+--------------
+Texture generations are tracked as AI usage records with:
+
+- `mode = texture_generation`
+- `model = <selected image model>`
+
+Reservation metadata includes:
+
+- `slot`
+- `display_name`
+- `quality`
+- `size`
+- `generation_kind = image_texture`
+
+Final settlement metadata includes:
+
+- `billing_type = image_generation`
+- `slot`
+- `display_name`
+- `quality`
+- `size`
+- `prompt`
+
+Storage and Ownership
+---------------------
+Texture slots remain fixed as:
+
+- `usertexture1` through `usertexture20`
+
+Textures are:
+
+- owned by a single authenticated user
+- stored privately in Firebase Storage
+- described by metadata in Firestore
+- only accessible through owner-authenticated API access
+
+User-Facing Runtime Data
+------------------------
+The shared page footer now exposes image model state to the frontend:
+
+- `window.P3D_AI_IMAGE_MODEL`
+- `window.P3D_AI_IMAGE_PRICING`
+
+The texture library frontend is:
+
+- /var/www/assets/editor/js/app/texture-library.js
+
+After a successful AI texture generation call, the frontend now:
+
+- updates the shared credit badge using returned `credits`
+- refreshes the texture manifest
+- updates the renderer-visible texture slot
+
+Primary Files
+-------------
+- /var/www/account.php
+- /var/www/api/textures.php
+- /var/www/includes/bootstrap.php
+- /var/www/includes/firebase.php
+- /var/www/assets/editor/js/app/texture-library.js
+
+Pricing Sources
+---------------
+- https://openai.com/api/pricing/
+- https://developers.openai.com/api/docs/models/gpt-image-1.5
+
+Notes
+-----
+- The current implementation charges texture generation as a fixed per-image cost, not by token usage.
+- The current texture generation path uses `medium` quality and `1024x1024` requests, then downsamples to the required `512x512` storage format.
+- If pricing changes upstream, the catalog in `/var/www/includes/firebase.php` should be updated and the checked date should be revised.

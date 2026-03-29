@@ -10,6 +10,94 @@
   let tourStepStartedAt = 0;
   let tourScrollFrom = 0;
   let tourScrollTo = 0;
+  let creditState = normalizeCredits(window.P3D_CREDITS || null);
+
+  function normalizeCredits(credits) {
+    if (!credits || typeof credits !== 'object') {
+      return null;
+    }
+
+    const balance = Math.max(0, Number(credits.balance || 0) || 0);
+    const reserved = Math.max(0, Number(credits.reserved || 0) || 0);
+    const available = Math.max(0, Number(credits.available != null ? credits.available : (balance - reserved)) || 0);
+
+    return {
+      balance: balance,
+      available: available,
+      reserved: reserved,
+      granted_lifetime: Math.max(0, Number(credits.granted_lifetime || 0) || 0),
+      spent_lifetime: Math.max(0, Number(credits.spent_lifetime || 0) || 0),
+      plan: String(credits.plan || 'free'),
+      updated_at: credits.updated_at || null
+    };
+  }
+
+  function creditDetailText(credits) {
+    if (!credits) return '';
+    return credits.reserved > 0 ? credits.reserved + ' reserved' : 'available';
+  }
+
+  function renderCreditsBadge() {
+    document.querySelectorAll('[data-site-credits]').forEach(function (node) {
+      if (!creditState) {
+        node.hidden = true;
+        return;
+      }
+
+      node.hidden = false;
+      const label = node.getAttribute('data-credit-label') || 'AI Credits';
+      const availableEl = node.querySelector('[data-site-credits-available]');
+      const detailEl = node.querySelector('[data-site-credits-detail]');
+      if (availableEl) {
+        availableEl.textContent = String(creditState.available);
+      }
+      if (detailEl) {
+        detailEl.textContent = creditDetailText(creditState);
+      }
+      node.setAttribute('aria-label', label + ': ' + creditState.available + (creditState.reserved > 0 ? ', ' + creditState.reserved + ' reserved' : ''));
+      node.title = label + ': ' + creditState.available + ' available';
+    });
+  }
+
+  function getCredits() {
+    return creditState ? Object.assign({}, creditState) : null;
+  }
+
+  function setCredits(nextCredits) {
+    creditState = normalizeCredits(nextCredits);
+    window.P3D_CREDITS = creditState ? Object.assign({}, creditState) : null;
+    renderCreditsBadge();
+    window.dispatchEvent(new CustomEvent('p3d:creditschange', {
+      detail: { credits: getCredits() }
+    }));
+    return getCredits();
+  }
+
+  async function refreshCredits() {
+    const response = await fetch(new URL('api/session.php?action=status', window.location.href).toString(), {
+      method: 'GET',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+      }
+    });
+
+    const data = await response.json();
+    if (!response.ok || !data || !data.ok) {
+      throw new Error((data && data.error) || 'Could not refresh credit status.');
+    }
+
+    return setCredits(data.credits || null);
+  }
+
+  window.P3DCredits = Object.assign({}, window.P3DCredits, {
+    get: getCredits,
+    set: setCredits,
+    refresh: refreshCredits,
+    render: renderCreditsBadge
+  });
 
   function copyText(text, button) {
     if (!navigator.clipboard) {
@@ -713,6 +801,7 @@
 
   window.addEventListener('DOMContentLoaded', function () {
     initPasswordToggles();
+    renderCreditsBadge();
 
     document.querySelectorAll('[data-copy-text]').forEach(function (button) {
       button.setAttribute('data-copy-label', button.textContent);

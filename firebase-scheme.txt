@@ -1,0 +1,637 @@
+ProGen3D Firebase Implementation Scheme
+=======================================
+
+Last updated: 2026-03-29
+
+
+1. Overview
+-----------
+
+This application uses Firebase as the primary backend for:
+- Authentication
+- User records
+- File records and grammar content
+- AI usage and credit accounting
+- Builtin rule library storage
+- Private user texture storage and metadata
+
+The Firebase implementation is centralized in:
+- /var/www/includes/firebase.php
+
+The application uses the Firebase Admin SDK in PHP through:
+- kreait/firebase-php
+
+It also includes:
+- google/cloud-firestore
+
+The app mixes:
+- Firestore document storage
+- Firebase Storage object storage
+- Firebase Authentication identity verification
+
+
+2. Core Firebase Configuration
+------------------------------
+
+Primary configuration source:
+- /var/www/includes/firebase.php
+  - firebase_client_config()
+
+Configured Firebase project values:
+- apiKey
+- authDomain
+- projectId
+- storageBucket
+- messagingSenderId
+- appId
+- measurementId
+
+Admin runtime bootstrapping:
+- firebase_admin_factory()
+  - creates a Kreait Firebase Factory
+  - sets project id
+  - sets default storage bucket
+  - loads service account credentials when available
+
+Credential resolution order:
+1. FIREBASE_SERVICE_ACCOUNT_PATH if valid
+2. GOOGLE_APPLICATION_CREDENTIALS if valid
+3. Default ADC path:
+   - ~/.config/gcloud/application_default_credentials.json
+4. Legacy fallback:
+   - /var/progen3d-firebase-service-account.json
+
+Runtime health/status helper:
+- firebase_admin_runtime_status()
+
+
+3. Authentication Scheme
+------------------------
+
+Purpose
+- Use Firebase Auth as the identity authority.
+- Sync authenticated Firebase users into local user records stored in Firestore.
+
+Main authentication flow
+1. Browser authenticates through Firebase client SDK.
+2. Browser sends Firebase ID token to the PHP backend.
+3. PHP verifies the ID token through firebase_verify_id_token().
+4. PHP syncs identity into a local user record.
+5. PHP stores Firebase uid in the PHP session.
+
+Main helpers
+- firebase_verify_id_token()
+- firebase_extract_bearer_token()
+- sync_firebase_identity_to_local()
+- current_user()
+
+Related endpoints
+- /var/www/api/session.php
+  - action=login
+  - action=logout
+  - action=status
+
+Session behavior
+- If a bearer token is present, the backend verifies it and syncs the local session.
+- If no bearer token is present, the backend falls back to the existing PHP session.
+
+User authorization model
+- Role is stored in user records.
+- normalize_user_role() standardizes role names.
+- is_admin() is used for admin-only features.
+
+Bootstrap admin promotion
+- firebase_promote_bootstrap_admin_if_needed()
+- Automatically grants admin custom claims to the configured bootstrap admin email once verified.
+
+
+4. User Record Scheme
+---------------------
+
+Collection
+- users
+
+Document id
+- Firebase uid
+
+User record purpose
+- Application-level user profile and authorization record.
+- Stores auth-derived identity plus app-specific fields.
+
+Key user fields
+- uid
+- id
+- username
+- role
+- email
+- email_verified
+- email_verified_at
+- created_at
+- updated_at
+- firebase_uid
+- firebase_provider
+- firebase_last_login_at
+- firebase_claims
+- legacy_user_id
+
+Credit-related user fields
+- credit_balance
+- credit_granted_lifetime
+- credit_spent_lifetime
+- credit_reserved
+- credit_plan
+- credit_updated_at
+
+Key helpers
+- firebase_users_collection()
+- firebase_user_document()
+- firebase_user_record_to_document()
+- firebase_user_document_to_record()
+- firebase_write_user_record()
+- firebase_fetch_user_by_id()
+- firebase_all_users()
+- firebase_find_user_by_field()
+- firebase_delete_user_record()
+
+Integration with app-level user utilities
+- /var/www/includes/bootstrap.php
+  - normalize_user_record()
+  - find_user_by_email()
+  - find_user_by_id()
+  - all_users()
+
+
+5. Firestore Transport Strategy
+-------------------------------
+
+The app supports two Firestore access modes:
+- SDK-based Firestore access
+- REST fallback access
+
+Why both exist
+- SDK is preferred for richer features, especially transactions.
+- REST fallback exists for compatibility and resilience.
+
+Key transport helpers
+- firebase_firestore_database()
+- firebase_firestore_prefer_rest()
+- firebase_firestore_rest_* helpers
+
+Pattern used throughout firebase.php
+1. Try SDK collection/document/query path.
+2. If unavailable or stack-overflow-like Firestore failure occurs, fall back to REST helpers.
+
+Important caveat
+- Some features require the SDK transaction path and are not fully supported with REST-only operation.
+- The AI credit system uses Firestore transactions for correctness.
+
+
+6. File Storage Scheme
+----------------------
+
+Purpose
+- Store user grammar files and published gallery items.
+
+Data split
+- Firestore stores file metadata.
+- Firebase Storage stores file content text.
+
+Collection
+- files
+
+Typical file fields
+- id
+- owner_uid
+- owner_username
+- title
+- created_at
+- updated_at
+- is_published
+- published_at
+- storage_path
+- content preview or related metadata
+
+Storage path pattern
+- Stored in Firebase Storage as text content.
+
+Key helpers
+- firebase_files_collection()
+- firebase_file_document()
+- firebase_write_file_record()
+- firebase_fetch_file_record()
+- firebase_all_files()
+- app_upsert_file_record()
+- app_find_user_file()
+- app_find_public_file()
+
+API surface
+- /var/www/api/file.php
+  - get_public
+  - get
+  - save
+  - publish
+  - unpublish
+
+
+7. Firebase Storage Scheme
+--------------------------
+
+Purpose
+- Store content that should not live directly in Firestore documents.
+
+Main storage uses
+- Grammar file text payloads
+- Builtin rule grammar files
+- Private user texture PNGs
+
+Bucket helper
+- firebase_storage_bucket()
+
+Generic storage helpers
+- firebase_load_storage_text()
+- firebase_load_storage_bytes()
+- firebase_store_storage_text()
+- firebase_store_storage_bytes()
+- firebase_delete_storage_text()
+
+Pattern
+- Firestore stores metadata/indexing data.
+- Firebase Storage stores larger raw content bytes.
+
+
+8. Builtin Rule Library Scheme
+------------------------------
+
+Purpose
+- Store reusable builtin grammar rule definitions published by admins.
+
+Storage layout
+- Manifest in Firebase Storage:
+  - builtin-rules/library.json
+
+- Grammar source files in Firebase Storage:
+  - builtin-rules/grammars/{id}.txt
+
+Builtin rule record fields
+- id
+- title
+- entry_rule
+- group
+- summary
+- storage_path
+- created_at
+- updated_at
+- published_by_uid
+- published_by_username
+- is_active
+
+Key helpers
+- firebase_builtin_rules_manifest_path()
+- firebase_builtin_rule_storage_path()
+- firebase_load_builtin_rules_manifest()
+- firebase_write_builtin_rules_manifest()
+- firebase_all_builtin_rules()
+- firebase_builtin_rule_find_by_id()
+- firebase_builtin_rule_find_by_entry_rule()
+- firebase_publish_builtin_rule()
+
+API surface
+- /var/www/api/builtin_rules.php
+
+
+9. AI Thread And Message Scheme
+-------------------------------
+
+Purpose
+- Persist conversational/editor-context AI requests and responses.
+
+Collections
+- ai_threads
+- ai_messages
+
+Thread fields
+- id
+- owner_uid
+- owner_username
+- owner_role
+- title
+- mode
+- file_id
+- file_title
+- created_at
+- updated_at
+- last_message_at
+- last_message_preview
+- message_count
+
+Message fields
+- id
+- thread_id
+- owner_uid
+- role
+- mode
+- content
+- created_at
+- payload
+
+Key helpers
+- firebase_ai_threads_collection()
+- firebase_ai_messages_collection()
+- firebase_ai_thread_document()
+- firebase_ai_message_document()
+- firebase_write_ai_thread_record()
+- firebase_write_ai_message_record()
+- firebase_thread_ai_messages()
+
+Main API endpoint
+- /var/www/api/ai.php
+
+
+10. AI Credits And Usage Scheme
+-------------------------------
+
+Purpose
+- Track AI spending and enforce per-user usage quotas.
+
+Collections
+- ai_usage
+- credit_ledger
+
+User summary lives in:
+- users/{uid}
+
+ai_usage fields
+- id
+- owner_uid
+- thread_id
+- mode
+- model
+- status
+- prompt_tokens
+- completion_tokens
+- total_tokens
+- estimated_credits
+- final_credits
+- request_preview
+- error_message
+- created_at
+- completed_at
+- metadata
+
+credit_ledger fields
+- id
+- owner_uid
+- type
+- amount
+- balance_after
+- source
+- reference_type
+- reference_id
+- metadata
+- created_at
+
+Why this split exists
+- users/{uid} gives fast balance reads
+- ai_usage gives request-level diagnostics
+- credit_ledger gives immutable accounting trail
+
+Key helpers
+- firebase_credit_summary()
+- firebase_ai_estimate_credit_cost()
+- firebase_ai_reserve_credits()
+- firebase_ai_finalize_credits()
+- firebase_ai_release_reserved_credits()
+- firebase_grant_ai_credits()
+- firebase_all_ai_usage()
+- firebase_all_credit_ledger()
+
+Correctness strategy
+- Firestore transactions are used for credit mutations.
+- This is required for cross-host safety and to avoid overspending under concurrent requests.
+
+Administrative support
+- Admin UI in /var/www/admin.php
+- CLI tools:
+  - /var/www/bin/backfill-ai-credits.php
+  - /var/www/bin/grant-ai-credits.php
+
+
+11. User Texture Library Scheme
+-------------------------------
+
+Purpose
+- Let users manage private textures for use in grammar rendering.
+
+Storage split
+- Firestore:
+  - metadata in user_textures collection
+- Firebase Storage:
+  - PNG object per user slot
+
+Grammar naming model
+- Fixed slot names:
+  - usertexture1 through usertexture20
+
+Collection
+- user_textures
+
+Document id format
+- {uid}__{slot}
+
+Storage path format
+- user-textures/{uid}/{slot}.png
+
+Texture metadata fields
+- id
+- owner_uid
+- slot
+- display_name
+- storage_path
+- mime_type
+- width
+- height
+- alpha
+- source
+- prompt
+- active
+- created_at
+- updated_at
+
+Key helpers
+- firebase_user_textures_collection()
+- firebase_normalize_texture_slot()
+- firebase_user_texture_document_id()
+- firebase_user_texture_storage_path()
+- firebase_write_user_texture_record()
+- firebase_fetch_user_texture_record()
+- firebase_list_user_texture_records()
+- firebase_delete_user_texture_record()
+- firebase_user_texture_manifest()
+- firebase_store_user_texture()
+- firebase_load_user_texture_bytes()
+- firebase_delete_user_texture()
+
+API surface
+- /var/www/api/textures.php
+  - list
+  - image
+  - upload
+  - update
+  - delete
+  - generate
+
+Security model
+- Texture objects are private.
+- Access is scoped to the current authenticated user.
+- image action streams bytes only for the owner.
+
+
+12. Image Normalization Scheme
+------------------------------
+
+Purpose
+- Ensure uploaded and generated textures become consistent renderer-ready assets.
+
+Normalization rules
+- Output format: PNG
+- Output dimensions: 512x512
+- Color model: RGBA
+- Resize strategy: center-crop cover
+
+Normalizer implementation
+- /var/www/bin/normalize_texture.py
+  - Uses Pillow
+
+Why this exists outside PHP image extensions
+- Host initially lacked:
+  - Imagick
+  - GD
+  - ImageMagick CLI
+
+Installed dependency
+- python3-pil
+
+PHP integration helpers
+- firebase_texture_normalizer_script_path()
+- firebase_texture_normalizer_ready()
+- firebase_texture_normalize_upload()
+- firebase_texture_normalize_bytes()
+
+
+13. OpenAI-Backed Texture Generation Scheme
+-------------------------------------------
+
+Purpose
+- Generate textures directly from prompts and store them in user slots.
+
+Endpoint
+- /var/www/api/textures.php?action=generate
+
+OpenAI usage
+- Calls:
+  - POST https://api.openai.com/v1/images/generations
+
+Model
+- Default:
+  - gpt-image-1
+- Configurable through:
+  - OPENAI_IMAGE_MODEL
+
+Flow
+1. User submits prompt for a selected slot.
+2. Server sends constrained texture prompt to OpenAI Image API.
+3. Image bytes are returned as base64.
+4. Server normalizes image to 512x512 PNG.
+5. Server stores object in Firebase Storage.
+6. Server writes/upserts metadata in Firestore.
+
+
+14. Admin And Operational Scheme
+--------------------------------
+
+Admin-specific Firebase-backed operations include:
+- AI credit grants
+- AI usage/ledger review
+- Builtin rule publishing
+- User management via synced user records
+
+Admin UI
+- /var/www/admin.php
+
+Operational scripts
+- /var/www/bin/backfill-ai-credits.php
+- /var/www/bin/grant-ai-credits.php
+
+Runtime checks
+- firebase_admin_ready()
+- firebase_builtin_rules_runtime_ready()
+- firebase_credit_transactions_available()
+- firebase_texture_normalizer_ready()
+
+
+15. Client-Side Firebase Usage
+------------------------------
+
+Purpose
+- Browser authenticates with Firebase Auth.
+- Server remains the source of truth for application data and protected operations.
+
+Client configuration injection
+- render_footer() injects:
+  - window.P3D_FIREBASE_CONFIG
+  - window.P3D_FIREBASE_RUNTIME
+  - window.P3D_CREDITS
+
+Client files
+- /var/www/assets/firebase-client.js
+- /var/www/assets/firebase-auth-pages.js
+- /var/www/assets/site.js
+
+Typical browser behavior
+- Use Firebase Auth for sign-in and token refresh.
+- Send bearer token to PHP APIs where needed.
+- Let PHP backend verify token and perform protected Firebase operations.
+
+
+16. Design Principles In This Scheme
+------------------------------------
+
+1. Keep Firebase Auth as identity authority.
+2. Keep app-specific user state in Firestore.
+3. Store large/raw content in Firebase Storage, not Firestore.
+4. Use Firestore documents for metadata, indexing, and audit records.
+5. Keep browser UI display-only for sensitive accounting.
+6. Use transactions where correctness matters, especially for credits.
+7. Support fallback paths where practical, but rely on SDK transactions for high-integrity flows.
+8. Use fixed naming and predictable storage paths where the grammar/runtime must reference assets directly.
+
+
+17. Current Firebase Collections And Storage Paths
+--------------------------------------------------
+
+Firestore collections currently used
+- users
+- files
+- ai_threads
+- ai_messages
+- ai_usage
+- credit_ledger
+- user_textures
+
+Firebase Storage path groups currently used
+- builtin-rules/library.json
+- builtin-rules/grammars/{id}.txt
+- user-textures/{uid}/{slot}.png
+- file content storage paths used by grammar file records
+
+
+18. Suggested Future Improvements
+---------------------------------
+
+1. Add explicit Firestore security rules documentation alongside this scheme.
+2. Add storage rules documentation for private textures and builtin rules.
+3. Add an ops checklist for service account rotation and ADC configuration.
+4. Add Firebase emulator support for local development/testing.
+5. Add structured metrics or audit dashboards for Storage failures and Firestore fallback usage.
+6. Decide whether AI texture generation should consume AI credits and record usage in ai_usage/credit_ledger.
+

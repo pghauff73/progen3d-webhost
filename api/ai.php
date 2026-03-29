@@ -91,17 +91,17 @@ function ai_trim_block($value, int $limit = 12000): string
 function ai_openai_request(array $payload): array
 {
     if (!function_exists('curl_init')) {
-        ai_json_response(['ok' => false, 'error' => 'PHP cURL is required for AI requests.'], 500);
+        throw new RuntimeException('PHP cURL is required for AI requests.', 500);
     }
 
     $apiKey = getenv('OPENAI_API_KEY') ?: ($_ENV['OPENAI_API_KEY'] ?? '');
     if (!$apiKey) {
-        ai_json_response(['ok' => false, 'error' => 'OPENAI_API_KEY is not configured on the server.'], 503);
+        throw new RuntimeException('OPENAI_API_KEY is not configured on the server.', 503);
     }
 
     $ch = curl_init('https://api.openai.com/v1/chat/completions');
     if (!$ch) {
-        ai_json_response(['ok' => false, 'error' => 'Could not initialize the AI request.'], 500);
+        throw new RuntimeException('Could not initialize the AI request.', 500);
     }
 
     curl_setopt_array($ch, [
@@ -122,17 +122,17 @@ function ai_openai_request(array $payload): array
     curl_close($ch);
 
     if ($errno) {
-        ai_json_response(['ok' => false, 'error' => 'AI request failed: ' . $error], 502);
+        throw new RuntimeException('AI request failed: ' . $error, 502);
     }
 
     $data = json_decode((string) $response, true);
     if (!is_array($data)) {
-        ai_json_response(['ok' => false, 'error' => 'AI provider returned a non-JSON response.'], 502);
+        throw new RuntimeException('AI provider returned a non-JSON response.', 502);
     }
 
     if ($status >= 400) {
         $message = $data['error']['message'] ?? 'AI provider returned an error.';
-        ai_json_response(['ok' => false, 'error' => $message], $status);
+        throw new RuntimeException((string) $message, $status);
     }
 
     return $data;
@@ -162,15 +162,19 @@ function ai_request_structured(string $model, array $messages, string $schemaNam
     $data = ai_openai_request($payload);
     $content = $data['choices'][0]['message']['content'] ?? '';
     if (!is_string($content) || trim($content) === '') {
-        ai_json_response(['ok' => false, 'error' => 'AI provider returned an empty completion.'], 502);
+        throw new RuntimeException('AI provider returned an empty completion.', 502);
     }
 
     $result = json_decode($content, true);
     if (!is_array($result)) {
-        ai_json_response(['ok' => false, 'error' => 'AI provider returned invalid structured output.'], 502);
+        throw new RuntimeException('AI provider returned invalid structured output.', 502);
     }
 
-    return $result;
+    return [
+        'result' => $result,
+        'response' => $data,
+        'usage' => is_array($data['usage'] ?? null) ? $data['usage'] : [],
+    ];
 }
 
 function ai_reference_text(): string
@@ -388,6 +392,12 @@ function ai_thread_owner_uid(array $user): string
     return trim((string) ($user['firebase_uid'] ?? $user['uid'] ?? $user['id'] ?? ''));
 }
 
+function ai_error_status(Throwable $error, int $default = 500): int
+{
+    $code = (int) $error->getCode();
+    return ($code >= 400 && $code <= 599) ? $code : $default;
+}
+
 $readActions = ['list_threads', 'get_thread'];
 if (in_array($action, $readActions, true)) {
     $user = ai_require_login_json();
@@ -454,21 +464,74 @@ if ($threadId !== '') {
     }
 }
 
-$model = trim((string) (getenv('OPENAI_MODEL') ?: ($_ENV['OPENAI_MODEL'] ?? 'gpt-5.4')));
+$model = firebase_user_ai_model($user);
 $context = ai_editor_context($body);
 $prompts = ai_mode_prompts($mode, $context);
 $schema = ai_mode_schema($mode);
-
-$result = ai_request_structured(
+$ownerUid = ai_thread_owner_uid($user);
+$effectiveThreadId = $threadId !== '' ? $threadId : firebase_generate_ai_thread_id();
+$requestPreview = trim((string) ($body['question'] ?? $body['prompt'] ?? $body['title'] ?? ''));
+$estimatedCredits = firebase_ai_estimate_credit_cost(
     $model,
-    [
-        ['role' => 'system', 'content' => $prompts['system']],
-        ['role' => 'user', 'content' => $prompts['user']],
-    ],
-    'progen3d_' . $mode,
-    $schema,
-    $mode === 'draft_grammar' ? 0.8 : 0.35
+    $mode,
+    $requestPreview,
+    $grammar,
+    ai_trim_block($body['selection'] ?? '', 4000),
+    ai_trim_block($body['parserError'] ?? '', 4000)
 );
+try {
+    $reservation = firebase_ai_reserve_credits($user, [
+        'usage_id' => firebase_generate_ai_usage_id(),
+        'thread_id' => $effectiveThreadId,
+        'mode' => $mode,
+        'model' => $model,
+        'estimated_credits' => $estimatedCredits,
+        'request_preview' => $requestPreview,
+        'metadata' => [
+            'file_id' => trim((string) ($body['file_id'] ?? '')),
+            'file_title' => trim((string) ($body['title'] ?? '')),
+        ],
+    ]);
+    $user = $reservation['user'];
+    $usageRecord = $reservation['usage'];
+} catch (Throwable $error) {
+    ai_json_response([
+        'ok' => false,
+        'error' => $error->getMessage(),
+        'credits' => firebase_credit_summary($user),
+    ], ai_error_status($error, 402));
+}
+
+try {
+    $aiResponse = ai_request_structured(
+        $model,
+        [
+            ['role' => 'system', 'content' => $prompts['system']],
+            ['role' => 'user', 'content' => $prompts['user']],
+        ],
+        'progen3d_' . $mode,
+        $schema,
+        $mode === 'draft_grammar' ? 0.8 : 0.35
+    );
+    $result = $aiResponse['result'];
+    $creditSettlement = firebase_ai_finalize_credits((string) ($usageRecord['id'] ?? ''), is_array($aiResponse['usage'] ?? null) ? $aiResponse['usage'] : [], $user);
+    $user = $creditSettlement['user'];
+    $usageRecord = $creditSettlement['usage'];
+} catch (Throwable $error) {
+    try {
+        $release = firebase_ai_release_reserved_credits((string) ($usageRecord['id'] ?? ''), $error->getMessage(), $user);
+        $user = $release['user'];
+        $usageRecord = $release['usage'];
+    } catch (Throwable $releaseError) {
+        error_log('ai credit release failed: ' . $releaseError->getMessage());
+    }
+
+    ai_json_response([
+        'ok' => false,
+        'error' => $error->getMessage(),
+        'credits' => firebase_credit_summary($user),
+    ], ai_error_status($error, 502));
+}
 
 if (isset($result['grammar']) && is_string($result['grammar'])) {
     $result['grammar'] = trim((string) preg_replace('/^```(?:[A-Za-z0-9_-]+)?\s*|\s*```$/m', '', $result['grammar']));
@@ -480,8 +543,7 @@ foreach (['motifs', 'next_steps', 'changes', 'observations', 'suggested_edits', 
 }
 
 $now = gmdate('c');
-$ownerUid = ai_thread_owner_uid($user);
-$threadId = $threadId !== '' ? $threadId : firebase_generate_ai_thread_id();
+$threadId = $effectiveThreadId;
 $existingMessages = firebase_thread_ai_messages($threadId, $user);
 $thread = firebase_write_ai_thread_record([
     'id' => $threadId,
@@ -535,6 +597,16 @@ ai_json_response([
     'mode' => $mode,
     'model' => $model,
     'thread' => $thread,
+    'credits' => firebase_credit_summary($user),
+    'usage' => [
+        'id' => (string) ($usageRecord['id'] ?? ''),
+        'status' => (string) ($usageRecord['status'] ?? ''),
+        'estimated_credits' => (int) ($usageRecord['estimated_credits'] ?? $estimatedCredits),
+        'final_credits' => (int) ($usageRecord['final_credits'] ?? 0),
+        'prompt_tokens' => (int) ($usageRecord['prompt_tokens'] ?? 0),
+        'completion_tokens' => (int) ($usageRecord['completion_tokens'] ?? 0),
+        'total_tokens' => (int) ($usageRecord['total_tokens'] ?? 0),
+    ],
     'messages' => firebase_thread_ai_messages($threadId, $user),
     'user' => [
         'id' => (string) ($user['uid'] ?? $user['id'] ?? ''),

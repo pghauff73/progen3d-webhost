@@ -145,6 +145,16 @@ function normalize_user_record(array $user): array
     $user['firebase_last_login_at'] = $user['firebase_last_login_at'] ?? null;
     $user['firebase_claims'] = is_array($user['firebase_claims'] ?? null) ? $user['firebase_claims'] : [];
     $user['legacy_user_id'] = isset($user['legacy_user_id']) && (int) $user['legacy_user_id'] > 0 ? (int) $user['legacy_user_id'] : null;
+    $user['credit_balance'] = max(0, (int) ($user['credit_balance'] ?? 0));
+    $user['credit_granted_lifetime'] = max(0, (int) ($user['credit_granted_lifetime'] ?? 0));
+    $user['credit_spent_lifetime'] = max(0, (int) ($user['credit_spent_lifetime'] ?? 0));
+    $user['credit_reserved'] = max(0, (int) ($user['credit_reserved'] ?? 0));
+    $user['credit_plan'] = trim((string) ($user['credit_plan'] ?? 'free'));
+    $user['credit_updated_at'] = $user['credit_updated_at'] ?? null;
+    $user['ai_model_preference'] = trim((string) ($user['ai_model_preference'] ?? ''));
+    $user['ai_model_updated_at'] = $user['ai_model_updated_at'] ?? null;
+    $user['ai_image_model_preference'] = trim((string) ($user['ai_image_model_preference'] ?? ''));
+    $user['ai_image_model_updated_at'] = $user['ai_image_model_updated_at'] ?? null;
     return $user;
 }
 
@@ -268,6 +278,7 @@ function create_user_record(string $uid, string $username, string $role = 'user'
     $actor = current_user();
     $requestedRole = normalize_user_role($role);
     $assignedRole = ($requestedRole === 'admin' && !$bypassRoleGuard && !can_assign_admin_role($actor)) ? 'user' : $requestedRole;
+    $initialCredits = max(0, (int) (getenv('APP_DEFAULT_AI_CREDITS') !== false ? getenv('APP_DEFAULT_AI_CREDITS') : 25));
     $record = [
         'uid' => $uid,
         'id' => $uid,
@@ -280,6 +291,16 @@ function create_user_record(string $uid, string $username, string $role = 'user'
         'updated_at' => gmdate('c'),
         'firebase_uid' => $uid,
         'legacy_user_id' => $legacyUserId,
+        'credit_balance' => $initialCredits,
+        'credit_granted_lifetime' => $initialCredits,
+        'credit_spent_lifetime' => 0,
+        'credit_reserved' => 0,
+        'credit_plan' => 'free',
+        'credit_updated_at' => gmdate('c'),
+        'ai_model_preference' => firebase_default_ai_model(),
+        'ai_model_updated_at' => gmdate('c'),
+        'ai_image_model_preference' => firebase_default_ai_image_model(),
+        'ai_image_model_updated_at' => gmdate('c'),
     ];
 
     return firebase_write_user_record($record);
@@ -837,6 +858,7 @@ function flash_get(): ?array
 function render_header(string $title, string $active = '', array $options = []): void
 {
     $user = current_user();
+    $creditSummary = $user ? firebase_credit_summary($user) : null;
     $flash = flash_get();
     $hasPendingVerification = !empty($_SESSION['pending_verification_user_id']);
     $hasPendingPasswordReset = !empty($_SESSION['pending_password_reset_user_id']);
@@ -886,9 +908,16 @@ function render_header(string $title, string $active = '', array $options = []):
             <?php if ($user): ?>
               <a class="<?= $active === 'editor' ? 'active' : '' ?>" href="editor.php">Editor</a>
               <a class="<?= $active === 'files' ? 'active' : '' ?>" href="files.php"><?= is_admin($user) ? 'All Files' : 'My Files' ?></a>
+              <a class="<?= $active === 'account' ? 'active' : '' ?>" href="account.php">Account</a>
               <?php if (is_admin($user)): ?>
                 <a class="<?= $active === 'builtin-rules' ? 'active' : '' ?>" href="BuiltinRuleLibrary.php">Builtin Rules</a>
                 <a class="<?= $active === 'admin' ? 'active' : '' ?>" href="admin.php">Admin</a>
+              <?php endif; ?>
+              <?php if ($creditSummary): ?>
+                <span class="nav-pill nav-pill--credits" data-site-credits data-credit-label="AI Credits">
+                  <strong data-site-credits-available><?= e((string) ($creditSummary['available'] ?? 0)) ?></strong>
+                  <span data-site-credits-detail><?= !empty($creditSummary['reserved']) ? e((string) ($creditSummary['reserved'] ?? 0)) . ' reserved' : 'available' ?></span>
+                </span>
               <?php endif; ?>
               <a class="nav-pill" href="logout.php">Logout · <?= e($user['username']) ?></a>
             <?php else: ?>
@@ -917,6 +946,9 @@ function render_footer(): void
 {
     $examples = site_examples();
     $user = current_user();
+    $creditSummary = $user ? firebase_credit_summary($user) : null;
+    $aiModel = $user ? firebase_user_ai_model($user) : firebase_default_ai_model();
+    $aiImageModel = $user ? firebase_user_ai_image_model($user) : firebase_default_ai_image_model();
     $hasPendingVerification = !empty($_SESSION['pending_verification_user_id']);
     $hasPendingPasswordReset = !empty($_SESSION['pending_password_reset_user_id']);
     ?>
@@ -945,6 +977,7 @@ function render_footer(): void
               <?php if ($user): ?>
                 <a href="editor.php">Editor workspace</a>
                 <a href="files.php"><?= is_admin($user) ? 'All files' : 'My files' ?></a>
+                <a href="account.php">Account settings</a>
                 <?php if (is_admin($user)): ?><a href="BuiltinRuleLibrary.php">Builtin rules</a><?php endif; ?>
                 <?php if (is_admin($user)): ?><a href="admin.php">Admin dashboard</a><?php endif; ?>
                 <a href="logout.php">Logout</a>
@@ -966,6 +999,11 @@ function render_footer(): void
       <script>
         window.P3D_FIREBASE_CONFIG = <?= firebase_client_config_json() ?>;
         window.P3D_FIREBASE_RUNTIME = <?= json_encode(firebase_admin_runtime_status(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+        window.P3D_CREDITS = <?= json_encode($creditSummary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+        window.P3D_AI_MODEL = <?= json_encode($aiModel, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+        window.P3D_AI_PRICING = <?= json_encode(firebase_ai_model_catalog(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+        window.P3D_AI_IMAGE_MODEL = <?= json_encode($aiImageModel, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+        window.P3D_AI_IMAGE_PRICING = <?= json_encode(firebase_ai_image_model_catalog(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
       </script>
       <script type="module" src="assets/firebase-client.js"></script>
       <script type="module" src="assets/firebase-auth-pages.js"></script>

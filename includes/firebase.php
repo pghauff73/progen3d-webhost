@@ -831,6 +831,16 @@ function firebase_user_record_to_document(array $user): array
         'firebase_last_login_at' => $user['firebase_last_login_at'] ?? null,
         'firebase_claims' => is_array($user['firebase_claims'] ?? null) ? $user['firebase_claims'] : [],
         'legacy_user_id' => isset($user['legacy_user_id']) ? (int) $user['legacy_user_id'] : null,
+        'credit_balance' => max(0, (int) ($user['credit_balance'] ?? 0)),
+        'credit_granted_lifetime' => max(0, (int) ($user['credit_granted_lifetime'] ?? 0)),
+        'credit_spent_lifetime' => max(0, (int) ($user['credit_spent_lifetime'] ?? 0)),
+        'credit_reserved' => max(0, (int) ($user['credit_reserved'] ?? 0)),
+        'credit_plan' => (string) ($user['credit_plan'] ?? 'free'),
+        'credit_updated_at' => $user['credit_updated_at'] ?? null,
+        'ai_model_preference' => trim((string) ($user['ai_model_preference'] ?? '')),
+        'ai_model_updated_at' => $user['ai_model_updated_at'] ?? null,
+        'ai_image_model_preference' => trim((string) ($user['ai_image_model_preference'] ?? '')),
+        'ai_image_model_updated_at' => $user['ai_image_model_updated_at'] ?? null,
     ];
 }
 
@@ -868,6 +878,16 @@ function firebase_user_document_to_record($snapshot): ?array
         'firebase_last_login_at' => $data['firebase_last_login_at'] ?? null,
         'firebase_claims' => is_array($data['firebase_claims'] ?? null) ? $data['firebase_claims'] : [],
         'legacy_user_id' => isset($data['legacy_user_id']) ? (int) $data['legacy_user_id'] : null,
+        'credit_balance' => max(0, (int) ($data['credit_balance'] ?? 0)),
+        'credit_granted_lifetime' => max(0, (int) ($data['credit_granted_lifetime'] ?? 0)),
+        'credit_spent_lifetime' => max(0, (int) ($data['credit_spent_lifetime'] ?? 0)),
+        'credit_reserved' => max(0, (int) ($data['credit_reserved'] ?? 0)),
+        'credit_plan' => (string) ($data['credit_plan'] ?? 'free'),
+        'credit_updated_at' => $data['credit_updated_at'] ?? null,
+        'ai_model_preference' => trim((string) ($data['ai_model_preference'] ?? '')),
+        'ai_model_updated_at' => $data['ai_model_updated_at'] ?? null,
+        'ai_image_model_preference' => trim((string) ($data['ai_image_model_preference'] ?? '')),
+        'ai_image_model_updated_at' => $data['ai_image_model_updated_at'] ?? null,
     ]);
 }
 
@@ -1109,6 +1129,16 @@ function firebase_ai_message_id_prefix(): string
     return 'aim_';
 }
 
+function firebase_ai_usage_id_prefix(): string
+{
+    return 'aiu_';
+}
+
+function firebase_credit_ledger_id_prefix(): string
+{
+    return 'clg_';
+}
+
 function firebase_generate_ai_thread_id(): string
 {
     return firebase_ai_thread_id_prefix() . bin2hex(random_bytes(12));
@@ -1117,6 +1147,16 @@ function firebase_generate_ai_thread_id(): string
 function firebase_generate_ai_message_id(): string
 {
     return firebase_ai_message_id_prefix() . bin2hex(random_bytes(12));
+}
+
+function firebase_generate_ai_usage_id(): string
+{
+    return firebase_ai_usage_id_prefix() . bin2hex(random_bytes(12));
+}
+
+function firebase_generate_credit_ledger_id(): string
+{
+    return firebase_credit_ledger_id_prefix() . bin2hex(random_bytes(12));
 }
 
 function firebase_ai_threads_collection()
@@ -1147,6 +1187,48 @@ function firebase_ai_messages_collection()
     return $database->collection('ai_messages');
 }
 
+function firebase_ai_usage_collection()
+{
+    if (firebase_firestore_prefer_rest()) {
+        return null;
+    }
+
+    $database = firebase_firestore_database();
+    if (!$database || !method_exists($database, 'collection')) {
+        return null;
+    }
+
+    return $database->collection('ai_usage');
+}
+
+function firebase_credit_ledger_collection()
+{
+    if (firebase_firestore_prefer_rest()) {
+        return null;
+    }
+
+    $database = firebase_firestore_database();
+    if (!$database || !method_exists($database, 'collection')) {
+        return null;
+    }
+
+    return $database->collection('credit_ledger');
+}
+
+function firebase_user_textures_collection()
+{
+    if (firebase_firestore_prefer_rest()) {
+        return null;
+    }
+
+    $database = firebase_firestore_database();
+    if (!$database || !method_exists($database, 'collection')) {
+        return null;
+    }
+
+    return $database->collection('user_textures');
+}
+
 function firebase_ai_thread_document(string $threadId)
 {
     $collection = firebase_ai_threads_collection();
@@ -1167,6 +1249,147 @@ function firebase_ai_message_document(string $messageId)
     }
 
     return $collection->document($messageId);
+}
+
+function firebase_ai_usage_document(string $usageId)
+{
+    $collection = firebase_ai_usage_collection();
+    $usageId = trim($usageId);
+    if (!$collection || !method_exists($collection, 'document') || $usageId === '') {
+        return null;
+    }
+
+    return $collection->document($usageId);
+}
+
+function firebase_credit_ledger_document(string $entryId)
+{
+    $collection = firebase_credit_ledger_collection();
+    $entryId = trim($entryId);
+    if (!$collection || !method_exists($collection, 'document') || $entryId === '') {
+        return null;
+    }
+
+    return $collection->document($entryId);
+}
+
+function firebase_user_texture_slot_pattern(): string
+{
+    return '/^usertexture(?:[1-9]|1[0-9]|20)$/';
+}
+
+function firebase_normalize_texture_slot(string $slot): string
+{
+    $slot = strtolower(trim($slot));
+    if (!preg_match(firebase_user_texture_slot_pattern(), $slot)) {
+        throw new RuntimeException('Texture slot must be usertexture1 through usertexture20.');
+    }
+
+    return $slot;
+}
+
+function firebase_user_texture_document_id(string $ownerUid, string $slot): string
+{
+    $ownerUid = trim($ownerUid);
+    $slot = firebase_normalize_texture_slot($slot);
+    if ($ownerUid === '') {
+        throw new RuntimeException('Texture owner uid is required.');
+    }
+
+    return $ownerUid . '__' . $slot;
+}
+
+function firebase_user_texture_document(string $ownerUid, string $slot)
+{
+    $collection = firebase_user_textures_collection();
+    $ownerUid = trim($ownerUid);
+    if (!$collection || !method_exists($collection, 'document') || $ownerUid === '') {
+        return null;
+    }
+
+    return $collection->document(firebase_user_texture_document_id($ownerUid, $slot));
+}
+
+function firebase_user_texture_storage_path(string $ownerUid, string $slot): string
+{
+    $ownerUid = trim($ownerUid);
+    $slot = firebase_normalize_texture_slot($slot);
+    if ($ownerUid === '') {
+        throw new RuntimeException('Texture owner uid is required.');
+    }
+
+    return 'user-textures/' . $ownerUid . '/' . $slot . '.png';
+}
+
+function firebase_user_texture_record_to_document(array $texture): array
+{
+    $ownerUid = trim((string) ($texture['owner_uid'] ?? ''));
+    $slot = firebase_normalize_texture_slot((string) ($texture['slot'] ?? ''));
+    $id = trim((string) ($texture['id'] ?? ''));
+    if ($id === '') {
+        $id = firebase_user_texture_document_id($ownerUid, $slot);
+    }
+
+    return [
+        'id' => $id,
+        'ownerUid' => $ownerUid,
+        'slot' => $slot,
+        'displayName' => trim((string) ($texture['display_name'] ?? $slot)),
+        'storagePath' => trim((string) ($texture['storage_path'] ?? firebase_user_texture_storage_path($ownerUid, $slot))),
+        'mimeType' => trim((string) ($texture['mime_type'] ?? 'image/png')),
+        'width' => max(1, (int) ($texture['width'] ?? 512)),
+        'height' => max(1, (int) ($texture['height'] ?? 512)),
+        'alpha' => max(0.0, min(1.0, (float) ($texture['alpha'] ?? 1.0))),
+        'source' => trim((string) ($texture['source'] ?? 'upload')),
+        'prompt' => trim((string) ($texture['prompt'] ?? '')),
+        'active' => array_key_exists('active', $texture) ? !empty($texture['active']) : true,
+        'createdAt' => (string) ($texture['created_at'] ?? ''),
+        'updatedAt' => (string) ($texture['updated_at'] ?? ''),
+    ];
+}
+
+function firebase_user_texture_document_to_record($snapshot): ?array
+{
+    if (!$snapshot) {
+        return null;
+    }
+    if (method_exists($snapshot, 'exists') && !$snapshot->exists()) {
+        return null;
+    }
+
+    $data = method_exists($snapshot, 'data') ? $snapshot->data() : null;
+    if (!is_array($data)) {
+        return null;
+    }
+
+    $ownerUid = trim((string) ($data['ownerUid'] ?? ''));
+    $slot = trim((string) ($data['slot'] ?? ''));
+    if ($ownerUid === '' || $slot === '') {
+        return null;
+    }
+
+    try {
+        $slot = firebase_normalize_texture_slot($slot);
+    } catch (\Throwable $error) {
+        return null;
+    }
+
+    return [
+        'id' => trim((string) ($data['id'] ?? (method_exists($snapshot, 'id') ? $snapshot->id() : ''))),
+        'owner_uid' => $ownerUid,
+        'slot' => $slot,
+        'display_name' => trim((string) ($data['displayName'] ?? $slot)),
+        'storage_path' => trim((string) ($data['storagePath'] ?? firebase_user_texture_storage_path($ownerUid, $slot))),
+        'mime_type' => trim((string) ($data['mimeType'] ?? 'image/png')),
+        'width' => max(1, (int) ($data['width'] ?? 512)),
+        'height' => max(1, (int) ($data['height'] ?? 512)),
+        'alpha' => max(0.0, min(1.0, (float) ($data['alpha'] ?? 1.0))),
+        'source' => trim((string) ($data['source'] ?? 'upload')),
+        'prompt' => trim((string) ($data['prompt'] ?? '')),
+        'active' => array_key_exists('active', $data) ? !empty($data['active']) : true,
+        'created_at' => (string) ($data['createdAt'] ?? ''),
+        'updated_at' => (string) ($data['updatedAt'] ?? ''),
+    ];
 }
 
 function firebase_ai_thread_record_to_document(array $thread): array
@@ -1268,6 +1491,120 @@ function firebase_ai_message_document_to_record($snapshot): ?array
         'content' => trim((string) ($data['content'] ?? '')),
         'created_at' => (string) ($data['createdAt'] ?? ''),
         'payload' => is_array($data['payload'] ?? null) ? $data['payload'] : [],
+    ];
+}
+
+function firebase_ai_usage_record_to_document(array $usage): array
+{
+    $id = trim((string) ($usage['id'] ?? ''));
+
+    return [
+        'id' => $id,
+        'ownerUid' => trim((string) ($usage['owner_uid'] ?? '')),
+        'threadId' => trim((string) ($usage['thread_id'] ?? '')),
+        'mode' => trim((string) ($usage['mode'] ?? 'active_helper_chat')),
+        'model' => trim((string) ($usage['model'] ?? '')),
+        'status' => trim((string) ($usage['status'] ?? 'reserved')),
+        'promptTokens' => max(0, (int) ($usage['prompt_tokens'] ?? 0)),
+        'completionTokens' => max(0, (int) ($usage['completion_tokens'] ?? 0)),
+        'totalTokens' => max(0, (int) ($usage['total_tokens'] ?? 0)),
+        'estimatedCredits' => max(0, (int) ($usage['estimated_credits'] ?? 0)),
+        'finalCredits' => max(0, (int) ($usage['final_credits'] ?? 0)),
+        'requestPreview' => trim((string) ($usage['request_preview'] ?? '')),
+        'errorMessage' => trim((string) ($usage['error_message'] ?? '')),
+        'createdAt' => (string) ($usage['created_at'] ?? ''),
+        'completedAt' => $usage['completed_at'] ?? null,
+        'metadata' => is_array($usage['metadata'] ?? null) ? $usage['metadata'] : [],
+    ];
+}
+
+function firebase_ai_usage_document_to_record($snapshot): ?array
+{
+    if (!$snapshot) {
+        return null;
+    }
+    if (method_exists($snapshot, 'exists') && !$snapshot->exists()) {
+        return null;
+    }
+
+    $data = method_exists($snapshot, 'data') ? $snapshot->data() : null;
+    if (!is_array($data)) {
+        return null;
+    }
+
+    $id = trim((string) ($data['id'] ?? (method_exists($snapshot, 'id') ? $snapshot->id() : '')));
+    if ($id === '') {
+        return null;
+    }
+
+    return [
+        'id' => $id,
+        'owner_uid' => trim((string) ($data['ownerUid'] ?? '')),
+        'thread_id' => trim((string) ($data['threadId'] ?? '')),
+        'mode' => trim((string) ($data['mode'] ?? 'active_helper_chat')),
+        'model' => trim((string) ($data['model'] ?? '')),
+        'status' => trim((string) ($data['status'] ?? 'reserved')),
+        'prompt_tokens' => max(0, (int) ($data['promptTokens'] ?? 0)),
+        'completion_tokens' => max(0, (int) ($data['completionTokens'] ?? 0)),
+        'total_tokens' => max(0, (int) ($data['totalTokens'] ?? 0)),
+        'estimated_credits' => max(0, (int) ($data['estimatedCredits'] ?? 0)),
+        'final_credits' => max(0, (int) ($data['finalCredits'] ?? 0)),
+        'request_preview' => trim((string) ($data['requestPreview'] ?? '')),
+        'error_message' => trim((string) ($data['errorMessage'] ?? '')),
+        'created_at' => (string) ($data['createdAt'] ?? ''),
+        'completed_at' => $data['completedAt'] ?? null,
+        'metadata' => is_array($data['metadata'] ?? null) ? $data['metadata'] : [],
+    ];
+}
+
+function firebase_credit_ledger_record_to_document(array $entry): array
+{
+    $id = trim((string) ($entry['id'] ?? ''));
+
+    return [
+        'id' => $id,
+        'ownerUid' => trim((string) ($entry['owner_uid'] ?? '')),
+        'type' => trim((string) ($entry['type'] ?? 'adjustment')),
+        'amount' => (int) ($entry['amount'] ?? 0),
+        'balanceAfter' => max(0, (int) ($entry['balance_after'] ?? 0)),
+        'source' => trim((string) ($entry['source'] ?? 'manual')),
+        'referenceType' => trim((string) ($entry['reference_type'] ?? '')),
+        'referenceId' => trim((string) ($entry['reference_id'] ?? '')),
+        'metadata' => is_array($entry['metadata'] ?? null) ? $entry['metadata'] : [],
+        'createdAt' => (string) ($entry['created_at'] ?? ''),
+    ];
+}
+
+function firebase_credit_ledger_document_to_record($snapshot): ?array
+{
+    if (!$snapshot) {
+        return null;
+    }
+    if (method_exists($snapshot, 'exists') && !$snapshot->exists()) {
+        return null;
+    }
+
+    $data = method_exists($snapshot, 'data') ? $snapshot->data() : null;
+    if (!is_array($data)) {
+        return null;
+    }
+
+    $id = trim((string) ($data['id'] ?? (method_exists($snapshot, 'id') ? $snapshot->id() : '')));
+    if ($id === '') {
+        return null;
+    }
+
+    return [
+        'id' => $id,
+        'owner_uid' => trim((string) ($data['ownerUid'] ?? '')),
+        'type' => trim((string) ($data['type'] ?? 'adjustment')),
+        'amount' => (int) ($data['amount'] ?? 0),
+        'balance_after' => max(0, (int) ($data['balanceAfter'] ?? 0)),
+        'source' => trim((string) ($data['source'] ?? 'manual')),
+        'reference_type' => trim((string) ($data['referenceType'] ?? '')),
+        'reference_id' => trim((string) ($data['referenceId'] ?? '')),
+        'metadata' => is_array($data['metadata'] ?? null) ? $data['metadata'] : [],
+        'created_at' => (string) ($data['createdAt'] ?? ''),
     ];
 }
 
@@ -1454,6 +1791,1294 @@ function firebase_write_ai_message_record(array $message): array
     }
 }
 
+function firebase_write_ai_usage_record(array $usage): array
+{
+    $usageId = trim((string) ($usage['id'] ?? ''));
+    if ($usageId === '') {
+        throw new RuntimeException('AI usage record requires an id.');
+    }
+
+    if (firebase_firestore_prefer_rest()) {
+        try {
+            firebase_firestore_rest_upsert_document('ai_usage', $usageId, firebase_ai_usage_record_to_document($usage));
+            return firebase_ai_usage_document_to_record(firebase_firestore_rest_snapshot(firebase_firestore_rest_get_document('ai_usage', $usageId))) ?? $usage;
+        } catch (\Throwable $error) {
+            throw new RuntimeException('Could not save the AI usage record: ' . $error->getMessage());
+        }
+    }
+
+    $doc = firebase_ai_usage_document($usageId);
+    if (!$doc || !method_exists($doc, 'set')) {
+        try {
+            firebase_firestore_rest_upsert_document('ai_usage', $usageId, firebase_ai_usage_record_to_document($usage));
+            return firebase_ai_usage_document_to_record(firebase_firestore_rest_snapshot(firebase_firestore_rest_get_document('ai_usage', $usageId))) ?? $usage;
+        } catch (\Throwable $error) {
+            throw new RuntimeException('Could not save the AI usage record: ' . $error->getMessage());
+        }
+    }
+
+    try {
+        $doc->set(firebase_ai_usage_record_to_document($usage));
+        return firebase_ai_usage_document_to_record($doc->snapshot()) ?? $usage;
+    } catch (\Throwable $error) {
+        if (!firebase_firestore_stack_overflow_message($error->getMessage())) {
+            throw new RuntimeException('Could not save the AI usage record: ' . $error->getMessage());
+        }
+
+        try {
+            firebase_firestore_rest_upsert_document('ai_usage', $usageId, firebase_ai_usage_record_to_document($usage));
+            return firebase_ai_usage_document_to_record(firebase_firestore_rest_snapshot(firebase_firestore_rest_get_document('ai_usage', $usageId))) ?? $usage;
+        } catch (\Throwable $restError) {
+            throw new RuntimeException('Could not save the AI usage record: ' . $restError->getMessage());
+        }
+    }
+}
+
+function firebase_fetch_ai_usage_record(string $usageId): ?array
+{
+    $usageId = trim($usageId);
+    if ($usageId === '') {
+        return null;
+    }
+
+    if (firebase_firestore_prefer_rest()) {
+        try {
+            $document = firebase_firestore_rest_get_document('ai_usage', $usageId);
+            return $document ? firebase_ai_usage_document_to_record(firebase_firestore_rest_snapshot($document)) : null;
+        } catch (\Throwable $error) {
+            error_log('firebase ai usage fetch failed: ' . $error->getMessage());
+            return null;
+        }
+    }
+
+    $doc = firebase_ai_usage_document($usageId);
+    if (!$doc || !method_exists($doc, 'snapshot')) {
+        try {
+            $document = firebase_firestore_rest_get_document('ai_usage', $usageId);
+            return $document ? firebase_ai_usage_document_to_record(firebase_firestore_rest_snapshot($document)) : null;
+        } catch (\Throwable $error) {
+            error_log('firebase ai usage fetch failed: ' . $error->getMessage());
+            return null;
+        }
+    }
+
+    try {
+        return firebase_ai_usage_document_to_record($doc->snapshot());
+    } catch (\Throwable $error) {
+        if (!firebase_firestore_stack_overflow_message($error->getMessage())) {
+            error_log('firebase ai usage fetch failed: ' . $error->getMessage());
+            return null;
+        }
+
+        try {
+            $document = firebase_firestore_rest_get_document('ai_usage', $usageId);
+            return $document ? firebase_ai_usage_document_to_record(firebase_firestore_rest_snapshot($document)) : null;
+        } catch (\Throwable $restError) {
+            error_log('firebase ai usage fetch failed: ' . $restError->getMessage());
+            return null;
+        }
+    }
+}
+
+function firebase_all_ai_usage(): array
+{
+    $items = [];
+
+    if (firebase_firestore_prefer_rest()) {
+        try {
+            foreach (firebase_firestore_rest_list_collection('ai_usage') as $document) {
+                $record = firebase_ai_usage_document_to_record(firebase_firestore_rest_snapshot($document));
+                if ($record) {
+                    $items[] = $record;
+                }
+            }
+        } catch (\Throwable $error) {
+            error_log('firebase ai usage query failed: ' . $error->getMessage());
+            return [];
+        }
+    } else {
+        $collection = firebase_ai_usage_collection();
+        if ($collection && method_exists($collection, 'documents')) {
+            try {
+                foreach ($collection->documents() as $snapshot) {
+                    $record = firebase_ai_usage_document_to_record($snapshot);
+                    if ($record) {
+                        $items[] = $record;
+                    }
+                }
+            } catch (\Throwable $error) {
+                if (!firebase_firestore_stack_overflow_message($error->getMessage())) {
+                    error_log('firebase ai usage query failed: ' . $error->getMessage());
+                    return [];
+                }
+            }
+        }
+
+        if ($items === []) {
+            try {
+                foreach (firebase_firestore_rest_list_collection('ai_usage') as $document) {
+                    $record = firebase_ai_usage_document_to_record(firebase_firestore_rest_snapshot($document));
+                    if ($record) {
+                        $items[] = $record;
+                    }
+                }
+            } catch (\Throwable $error) {
+                error_log('firebase ai usage query failed: ' . $error->getMessage());
+                return [];
+            }
+        }
+    }
+
+    usort($items, fn($a, $b) => strcmp((string) ($b['created_at'] ?? ''), (string) ($a['created_at'] ?? '')));
+    return array_values($items);
+}
+
+function firebase_write_credit_ledger_record(array $entry): array
+{
+    $entryId = trim((string) ($entry['id'] ?? ''));
+    if ($entryId === '') {
+        throw new RuntimeException('Credit ledger record requires an id.');
+    }
+
+    if (firebase_firestore_prefer_rest()) {
+        try {
+            firebase_firestore_rest_upsert_document('credit_ledger', $entryId, firebase_credit_ledger_record_to_document($entry));
+            return firebase_credit_ledger_document_to_record(firebase_firestore_rest_snapshot(firebase_firestore_rest_get_document('credit_ledger', $entryId))) ?? $entry;
+        } catch (\Throwable $error) {
+            throw new RuntimeException('Could not save the credit ledger record: ' . $error->getMessage());
+        }
+    }
+
+    $doc = firebase_credit_ledger_document($entryId);
+    if (!$doc || !method_exists($doc, 'set')) {
+        try {
+            firebase_firestore_rest_upsert_document('credit_ledger', $entryId, firebase_credit_ledger_record_to_document($entry));
+            return firebase_credit_ledger_document_to_record(firebase_firestore_rest_snapshot(firebase_firestore_rest_get_document('credit_ledger', $entryId))) ?? $entry;
+        } catch (\Throwable $error) {
+            throw new RuntimeException('Could not save the credit ledger record: ' . $error->getMessage());
+        }
+    }
+
+    try {
+        $doc->set(firebase_credit_ledger_record_to_document($entry));
+        return firebase_credit_ledger_document_to_record($doc->snapshot()) ?? $entry;
+    } catch (\Throwable $error) {
+        if (!firebase_firestore_stack_overflow_message($error->getMessage())) {
+            throw new RuntimeException('Could not save the credit ledger record: ' . $error->getMessage());
+        }
+
+        try {
+            firebase_firestore_rest_upsert_document('credit_ledger', $entryId, firebase_credit_ledger_record_to_document($entry));
+            return firebase_credit_ledger_document_to_record(firebase_firestore_rest_snapshot(firebase_firestore_rest_get_document('credit_ledger', $entryId))) ?? $entry;
+        } catch (\Throwable $restError) {
+            throw new RuntimeException('Could not save the credit ledger record: ' . $restError->getMessage());
+        }
+    }
+}
+
+function firebase_all_credit_ledger(): array
+{
+    $items = [];
+
+    if (firebase_firestore_prefer_rest()) {
+        try {
+            foreach (firebase_firestore_rest_list_collection('credit_ledger') as $document) {
+                $record = firebase_credit_ledger_document_to_record(firebase_firestore_rest_snapshot($document));
+                if ($record) {
+                    $items[] = $record;
+                }
+            }
+        } catch (\Throwable $error) {
+            error_log('firebase credit ledger query failed: ' . $error->getMessage());
+            return [];
+        }
+    } else {
+        $collection = firebase_credit_ledger_collection();
+        if ($collection && method_exists($collection, 'documents')) {
+            try {
+                foreach ($collection->documents() as $snapshot) {
+                    $record = firebase_credit_ledger_document_to_record($snapshot);
+                    if ($record) {
+                        $items[] = $record;
+                    }
+                }
+            } catch (\Throwable $error) {
+                if (!firebase_firestore_stack_overflow_message($error->getMessage())) {
+                    error_log('firebase credit ledger query failed: ' . $error->getMessage());
+                    return [];
+                }
+            }
+        }
+
+        if ($items === []) {
+            try {
+                foreach (firebase_firestore_rest_list_collection('credit_ledger') as $document) {
+                    $record = firebase_credit_ledger_document_to_record(firebase_firestore_rest_snapshot($document));
+                    if ($record) {
+                        $items[] = $record;
+                    }
+                }
+            } catch (\Throwable $error) {
+                error_log('firebase credit ledger query failed: ' . $error->getMessage());
+                return [];
+            }
+        }
+    }
+
+    usort($items, fn($a, $b) => strcmp((string) ($b['created_at'] ?? ''), (string) ($a['created_at'] ?? '')));
+    return array_values($items);
+}
+
+function firebase_write_user_texture_record(array $texture): array
+{
+    $ownerUid = trim((string) ($texture['owner_uid'] ?? ''));
+    $slot = firebase_normalize_texture_slot((string) ($texture['slot'] ?? ''));
+    $documentId = firebase_user_texture_document_id($ownerUid, $slot);
+
+    if (firebase_firestore_prefer_rest()) {
+        try {
+            firebase_firestore_rest_upsert_document('user_textures', $documentId, firebase_user_texture_record_to_document($texture));
+            return firebase_user_texture_document_to_record(firebase_firestore_rest_snapshot(firebase_firestore_rest_get_document('user_textures', $documentId))) ?? $texture;
+        } catch (\Throwable $error) {
+            throw new RuntimeException('Could not save the user texture record: ' . $error->getMessage());
+        }
+    }
+
+    $doc = firebase_user_texture_document($ownerUid, $slot);
+    if (!$doc || !method_exists($doc, 'set')) {
+        throw new RuntimeException('Firebase Firestore is not ready for user textures.');
+    }
+
+    try {
+        $doc->set(firebase_user_texture_record_to_document($texture));
+        return firebase_user_texture_document_to_record($doc->snapshot()) ?? $texture;
+    } catch (\Throwable $error) {
+        if (!firebase_firestore_stack_overflow_message($error->getMessage())) {
+            throw new RuntimeException('Could not save the user texture record: ' . $error->getMessage());
+        }
+
+        try {
+            firebase_firestore_rest_upsert_document('user_textures', $documentId, firebase_user_texture_record_to_document($texture));
+            return firebase_user_texture_document_to_record(firebase_firestore_rest_snapshot(firebase_firestore_rest_get_document('user_textures', $documentId))) ?? $texture;
+        } catch (\Throwable $restError) {
+            throw new RuntimeException('Could not save the user texture record: ' . $restError->getMessage());
+        }
+    }
+}
+
+function firebase_fetch_user_texture_record(string $ownerUid, string $slot): ?array
+{
+    $ownerUid = trim($ownerUid);
+    if ($ownerUid === '') {
+        return null;
+    }
+    $slot = firebase_normalize_texture_slot($slot);
+    $documentId = firebase_user_texture_document_id($ownerUid, $slot);
+
+    if (firebase_firestore_prefer_rest()) {
+        try {
+            $document = firebase_firestore_rest_get_document('user_textures', $documentId);
+            return $document ? firebase_user_texture_document_to_record(firebase_firestore_rest_snapshot($document)) : null;
+        } catch (\Throwable $error) {
+            error_log('firebase user texture fetch failed: ' . $error->getMessage());
+            return null;
+        }
+    }
+
+    $doc = firebase_user_texture_document($ownerUid, $slot);
+    if (!$doc || !method_exists($doc, 'snapshot')) {
+        try {
+            $document = firebase_firestore_rest_get_document('user_textures', $documentId);
+            return $document ? firebase_user_texture_document_to_record(firebase_firestore_rest_snapshot($document)) : null;
+        } catch (\Throwable $error) {
+            error_log('firebase user texture fetch failed: ' . $error->getMessage());
+            return null;
+        }
+    }
+
+    try {
+        return firebase_user_texture_document_to_record($doc->snapshot());
+    } catch (\Throwable $error) {
+        if (!firebase_firestore_stack_overflow_message($error->getMessage())) {
+            error_log('firebase user texture fetch failed: ' . $error->getMessage());
+            return null;
+        }
+
+        try {
+            $document = firebase_firestore_rest_get_document('user_textures', $documentId);
+            return $document ? firebase_user_texture_document_to_record(firebase_firestore_rest_snapshot($document)) : null;
+        } catch (\Throwable $restError) {
+            error_log('firebase user texture fetch failed: ' . $restError->getMessage());
+            return null;
+        }
+    }
+}
+
+function firebase_list_user_texture_records(string $ownerUid, bool $includeInactive = true): array
+{
+    $ownerUid = trim($ownerUid);
+    if ($ownerUid === '') {
+        return [];
+    }
+
+    $items = [];
+
+    if (firebase_firestore_prefer_rest()) {
+        try {
+            foreach (firebase_firestore_rest_list_collection('user_textures') as $document) {
+                $record = firebase_user_texture_document_to_record(firebase_firestore_rest_snapshot($document));
+                if ($record && (string) ($record['owner_uid'] ?? '') === $ownerUid) {
+                    $items[] = $record;
+                }
+            }
+        } catch (\Throwable $error) {
+            error_log('firebase user texture query failed: ' . $error->getMessage());
+            return [];
+        }
+    } else {
+        $collection = firebase_user_textures_collection();
+        if ($collection && method_exists($collection, 'where')) {
+            try {
+                foreach ($collection->where('ownerUid', '=', $ownerUid)->documents() as $snapshot) {
+                    $record = firebase_user_texture_document_to_record($snapshot);
+                    if ($record) {
+                        $items[] = $record;
+                    }
+                }
+            } catch (\Throwable $error) {
+                if (!firebase_firestore_stack_overflow_message($error->getMessage())) {
+                    error_log('firebase user texture query failed: ' . $error->getMessage());
+                    return [];
+                }
+            }
+        }
+
+        if ($items === []) {
+            try {
+                foreach (firebase_firestore_rest_list_collection('user_textures') as $document) {
+                    $record = firebase_user_texture_document_to_record(firebase_firestore_rest_snapshot($document));
+                    if ($record && (string) ($record['owner_uid'] ?? '') === $ownerUid) {
+                        $items[] = $record;
+                    }
+                }
+            } catch (\Throwable $error) {
+                error_log('firebase user texture query failed: ' . $error->getMessage());
+                return [];
+            }
+        }
+    }
+
+    if (!$includeInactive) {
+        $items = array_values(array_filter($items, static fn(array $item): bool => !empty($item['active'])));
+    }
+
+    usort($items, function (array $a, array $b): int {
+        return strcmp((string) ($a['slot'] ?? ''), (string) ($b['slot'] ?? ''));
+    });
+
+    return array_values($items);
+}
+
+function firebase_delete_user_texture_record(string $ownerUid, string $slot): bool
+{
+    $ownerUid = trim($ownerUid);
+    if ($ownerUid === '') {
+        return false;
+    }
+    $slot = firebase_normalize_texture_slot($slot);
+    $documentId = firebase_user_texture_document_id($ownerUid, $slot);
+
+    if (firebase_firestore_prefer_rest()) {
+        try {
+            return firebase_firestore_rest_delete_document('user_textures', $documentId);
+        } catch (\Throwable $error) {
+            error_log('firebase user texture delete failed: ' . $error->getMessage());
+            return false;
+        }
+    }
+
+    $doc = firebase_user_texture_document($ownerUid, $slot);
+    if (!$doc || !method_exists($doc, 'delete')) {
+        try {
+            return firebase_firestore_rest_delete_document('user_textures', $documentId);
+        } catch (\Throwable $error) {
+            error_log('firebase user texture delete failed: ' . $error->getMessage());
+            return false;
+        }
+    }
+
+    try {
+        $doc->delete();
+        return true;
+    } catch (\Throwable $error) {
+        if (!firebase_firestore_stack_overflow_message($error->getMessage())) {
+            error_log('firebase user texture delete failed: ' . $error->getMessage());
+            return false;
+        }
+
+        try {
+            return firebase_firestore_rest_delete_document('user_textures', $documentId);
+        } catch (\Throwable $restError) {
+            error_log('firebase user texture delete failed: ' . $restError->getMessage());
+            return false;
+        }
+    }
+}
+
+function firebase_user_texture_manifest(string $ownerUid): array
+{
+    $ownerUid = trim($ownerUid);
+    $records = firebase_list_user_texture_records($ownerUid, true);
+    $bySlot = [];
+    foreach ($records as $record) {
+        $bySlot[(string) ($record['slot'] ?? '')] = $record;
+    }
+
+    $items = [];
+    for ($index = 1; $index <= 20; $index += 1) {
+        $slot = 'usertexture' . $index;
+        $record = $bySlot[$slot] ?? null;
+        $items[] = [
+            'slot' => $slot,
+            'display_name' => $record['display_name'] ?? $slot,
+            'active' => $record ? !empty($record['active']) : false,
+            'alpha' => $record ? (float) ($record['alpha'] ?? 1.0) : 1.0,
+            'width' => $record ? (int) ($record['width'] ?? 512) : 512,
+            'height' => $record ? (int) ($record['height'] ?? 512) : 512,
+            'source' => $record['source'] ?? '',
+            'prompt' => $record['prompt'] ?? '',
+            'updated_at' => $record['updated_at'] ?? null,
+            'image_url' => $record && !empty($record['active']) ? app_url('api/textures.php?action=image&slot=' . rawurlencode($slot)) : null,
+        ];
+    }
+
+    return $items;
+}
+
+function firebase_ai_mode_base_credits(string $mode): int
+{
+    return match ($mode) {
+        'draft_grammar' => 4,
+        'repair_grammar' => 3,
+        'explain_grammar' => 2,
+        'tutor_next_step' => 2,
+        default => 1,
+    };
+}
+
+function firebase_ai_usage_token_counts(array $usage): array
+{
+    $promptTokens = max(0, (int) ($usage['prompt_tokens'] ?? $usage['promptTokens'] ?? 0));
+    $completionTokens = max(0, (int) ($usage['completion_tokens'] ?? $usage['completionTokens'] ?? 0));
+    $totalTokens = max(0, (int) ($usage['total_tokens'] ?? $usage['totalTokens'] ?? ($promptTokens + $completionTokens)));
+
+    return [
+        'prompt_tokens' => $promptTokens,
+        'completion_tokens' => $completionTokens,
+        'total_tokens' => $totalTokens,
+    ];
+}
+
+function firebase_ai_credit_value_usd(): float
+{
+    return 0.01;
+}
+
+function firebase_ai_image_model_catalog(): array
+{
+    return [
+        'gpt-image-1.5' => [
+            'label' => 'GPT Image 1.5',
+            'description' => 'Latest image generation model with the strongest prompt adherence.',
+            'generation_costs_usd' => [
+                'low' => ['1024x1024' => 0.009, '1024x1536' => 0.013, '1536x1024' => 0.013],
+                'medium' => ['1024x1024' => 0.034, '1024x1536' => 0.050, '1536x1024' => 0.050],
+                'high' => ['1024x1024' => 0.133, '1024x1536' => 0.200, '1536x1024' => 0.200],
+            ],
+            'source' => 'https://platform.openai.com/docs/models/gpt-image-1.5',
+            'updated_at' => '2026-03-29',
+        ],
+        'gpt-image-1' => [
+            'label' => 'GPT Image 1',
+            'description' => 'Previous high-fidelity image model.',
+            'generation_costs_usd' => [
+                'low' => ['1024x1024' => 0.011, '1024x1536' => 0.016, '1536x1024' => 0.016],
+                'medium' => ['1024x1024' => 0.042, '1024x1536' => 0.063, '1536x1024' => 0.063],
+                'high' => ['1024x1024' => 0.167, '1024x1536' => 0.250, '1536x1024' => 0.250],
+            ],
+            'source' => 'https://platform.openai.com/docs/models/gpt-image-1',
+            'updated_at' => '2026-03-29',
+        ],
+        'gpt-image-1-mini' => [
+            'label' => 'GPT Image 1 mini',
+            'description' => 'Lower-cost image model for faster texture generation.',
+            'generation_costs_usd' => [
+                'low' => ['1024x1024' => 0.005, '1024x1536' => 0.006, '1536x1024' => 0.006],
+                'medium' => ['1024x1024' => 0.011, '1024x1536' => 0.015, '1536x1024' => 0.015],
+                'high' => ['1024x1024' => 0.036, '1024x1536' => 0.052, '1536x1024' => 0.052],
+            ],
+            'source' => 'https://platform.openai.com/docs/models/gpt-image-1-mini',
+            'updated_at' => '2026-03-29',
+        ],
+    ];
+}
+
+function firebase_ai_model_catalog(): array
+{
+    return [
+        'gpt-5.4' => [
+            'label' => 'GPT-5.4',
+            'description' => 'Most capable model for professional work.',
+            'input_per_million_usd' => 2.50,
+            'cached_input_per_million_usd' => 0.25,
+            'output_per_million_usd' => 15.00,
+            'source' => 'https://openai.com/api/pricing/',
+            'updated_at' => '2026-03-29',
+        ],
+        'gpt-5-mini' => [
+            'label' => 'GPT-5 mini',
+            'description' => 'Lower-cost GPT-5 model for everyday AI help.',
+            'input_per_million_usd' => 0.25,
+            'cached_input_per_million_usd' => 0.025,
+            'output_per_million_usd' => 2.00,
+            'source' => 'https://developers.openai.com/api/docs/models/gpt-5-mini',
+            'updated_at' => '2026-03-29',
+        ],
+        'gpt-5.4-nano' => [
+            'label' => 'GPT-5.4 nano',
+            'description' => 'Cheapest GPT-5.4-class model for simple requests.',
+            'input_per_million_usd' => 0.20,
+            'cached_input_per_million_usd' => 0.02,
+            'output_per_million_usd' => 1.25,
+            'source' => 'https://openai.com/api/pricing/',
+            'updated_at' => '2026-03-29',
+        ],
+    ];
+}
+
+function firebase_default_ai_model(): string
+{
+    $configured = trim((string) (getenv('OPENAI_MODEL') ?: ($_ENV['OPENAI_MODEL'] ?? 'gpt-5.4')));
+    $catalog = firebase_ai_model_catalog();
+    return array_key_exists($configured, $catalog) ? $configured : 'gpt-5.4';
+}
+
+function firebase_default_ai_image_model(): string
+{
+    $configured = trim((string) (getenv('OPENAI_IMAGE_MODEL') ?: ($_ENV['OPENAI_IMAGE_MODEL'] ?? 'gpt-image-1.5')));
+    $catalog = firebase_ai_image_model_catalog();
+    return array_key_exists($configured, $catalog) ? $configured : 'gpt-image-1.5';
+}
+
+function firebase_normalize_ai_model(string $model): string
+{
+    $model = trim($model);
+    $catalog = firebase_ai_model_catalog();
+    return array_key_exists($model, $catalog) ? $model : firebase_default_ai_model();
+}
+
+function firebase_normalize_ai_image_model(string $model): string
+{
+    $model = trim($model);
+    $catalog = firebase_ai_image_model_catalog();
+    return array_key_exists($model, $catalog) ? $model : firebase_default_ai_image_model();
+}
+
+function firebase_user_ai_model(array $user): string
+{
+    return firebase_normalize_ai_model((string) ($user['ai_model_preference'] ?? firebase_default_ai_model()));
+}
+
+function firebase_user_ai_image_model(array $user): string
+{
+    return firebase_normalize_ai_image_model((string) ($user['ai_image_model_preference'] ?? firebase_default_ai_image_model()));
+}
+
+function firebase_ai_model_costs(string $model): array
+{
+    $catalog = firebase_ai_model_catalog();
+    $model = firebase_normalize_ai_model($model);
+    return $catalog[$model] ?? $catalog[firebase_default_ai_model()];
+}
+
+function firebase_ai_image_model_costs(string $model): array
+{
+    $catalog = firebase_ai_image_model_catalog();
+    $model = firebase_normalize_ai_image_model($model);
+    return $catalog[$model] ?? $catalog[firebase_default_ai_image_model()];
+}
+
+function firebase_ai_estimated_completion_tokens(string $mode): int
+{
+    return match ($mode) {
+        'draft_grammar' => 1800,
+        'repair_grammar' => 1000,
+        'explain_grammar' => 700,
+        'tutor_next_step' => 700,
+        default => 600,
+    };
+}
+
+function firebase_ai_cost_usd(string $model, int $promptTokens, int $completionTokens): float
+{
+    $pricing = firebase_ai_model_costs($model);
+    $promptCost = (max(0, $promptTokens) / 1000000) * (float) ($pricing['input_per_million_usd'] ?? 0.0);
+    $completionCost = (max(0, $completionTokens) / 1000000) * (float) ($pricing['output_per_million_usd'] ?? 0.0);
+    return max(0.0, $promptCost + $completionCost);
+}
+
+function firebase_ai_cost_to_credits(float $usdCost): int
+{
+    return max(1, (int) ceil($usdCost / firebase_ai_credit_value_usd()));
+}
+
+function firebase_ai_image_generation_cost_usd(string $model, string $quality = 'medium', string $size = '1024x1024'): float
+{
+    $pricing = firebase_ai_image_model_costs($model);
+    $quality = strtolower(trim($quality));
+    $size = trim($size);
+    $costs = is_array($pricing['generation_costs_usd'] ?? null) ? $pricing['generation_costs_usd'] : [];
+    $qualityCosts = is_array($costs[$quality] ?? null) ? $costs[$quality] : [];
+    if (isset($qualityCosts[$size])) {
+        return max(0.0, (float) $qualityCosts[$size]);
+    }
+
+    $defaultPricing = firebase_ai_image_model_costs(firebase_default_ai_image_model());
+    return max(0.0, (float) ($defaultPricing['generation_costs_usd']['medium']['1024x1024'] ?? 0.034));
+}
+
+function firebase_ai_image_generation_credits(string $model, string $quality = 'medium', string $size = '1024x1024'): int
+{
+    return firebase_ai_cost_to_credits(firebase_ai_image_generation_cost_usd($model, $quality, $size));
+}
+
+function firebase_ai_estimate_credit_cost(string $model, string $mode, string $promptText, string $grammar = '', string $selection = '', string $parserError = ''): int
+{
+    $chars = mb_strlen($promptText) + mb_strlen($grammar) + mb_strlen($selection) + mb_strlen($parserError);
+    $estimatedPromptTokens = (int) ceil($chars / 4) + 1200;
+    $estimatedCompletionTokens = firebase_ai_estimated_completion_tokens($mode);
+    return firebase_ai_cost_to_credits(firebase_ai_cost_usd($model, $estimatedPromptTokens, $estimatedCompletionTokens));
+}
+
+function firebase_credit_summary(array $user): array
+{
+    $user = normalize_user_record($user);
+    $balance = max(0, (int) ($user['credit_balance'] ?? 0));
+    $reserved = max(0, (int) ($user['credit_reserved'] ?? 0));
+
+    return [
+        'balance' => $balance,
+        'available' => max(0, $balance - $reserved),
+        'granted_lifetime' => max(0, (int) ($user['credit_granted_lifetime'] ?? 0)),
+        'spent_lifetime' => max(0, (int) ($user['credit_spent_lifetime'] ?? 0)),
+        'reserved' => $reserved,
+        'plan' => (string) ($user['credit_plan'] ?? 'free'),
+        'updated_at' => $user['credit_updated_at'] ?? null,
+    ];
+}
+
+function firebase_credit_firestore()
+{
+    static $database = false;
+    if ($database !== false) {
+        return $database;
+    }
+
+    $factory = firebase_admin_factory();
+    if (!$factory) {
+        $database = null;
+        return $database;
+    }
+
+    try {
+        $firestore = $factory->createFirestore();
+        $database = is_object($firestore) && method_exists($firestore, 'database') ? $firestore->database() : null;
+    } catch (\Throwable $error) {
+        error_log('firebase credit firestore init failed: ' . $error->getMessage());
+        $database = null;
+    }
+
+    return $database;
+}
+
+function firebase_credit_transactions_available(): bool
+{
+    $database = firebase_credit_firestore();
+    return $database !== null && method_exists($database, 'runTransaction') && method_exists($database, 'document');
+}
+
+function firebase_credit_document(string $collection, string $documentId)
+{
+    $database = firebase_credit_firestore();
+    $documentId = trim($documentId);
+    if (!$database || !method_exists($database, 'document') || $documentId === '') {
+        return null;
+    }
+
+    return $database->document(trim($collection, '/') . '/' . $documentId);
+}
+
+function firebase_run_credit_transaction(callable $callback)
+{
+    $database = firebase_credit_firestore();
+    if (!$database || !method_exists($database, 'runTransaction')) {
+        throw new RuntimeException('AI credits require Firestore transaction support. Disable REST-only credit operations and configure the Firestore SDK.');
+    }
+
+    return $database->runTransaction($callback);
+}
+
+function firebase_credit_available(array $user): int
+{
+    $user = normalize_user_record($user);
+    return max(0, (int) ($user['credit_balance'] ?? 0) - (int) ($user['credit_reserved'] ?? 0));
+}
+
+function firebase_ai_reserve_credits(array $user, array $request): array
+{
+    $uid = trim((string) ($user['uid'] ?? $user['id'] ?? $user['firebase_uid'] ?? ''));
+    if ($uid === '') {
+        throw new RuntimeException('AI credit reservation requires an authenticated Firebase user.');
+    }
+
+    $estimatedCredits = max(1, (int) ($request['estimated_credits'] ?? 1));
+    $usageId = trim((string) ($request['usage_id'] ?? firebase_generate_ai_usage_id()));
+    $threadId = trim((string) ($request['thread_id'] ?? ''));
+    $mode = trim((string) ($request['mode'] ?? 'active_helper_chat'));
+    $model = trim((string) ($request['model'] ?? ''));
+    $requestPreview = mb_substr(trim((string) ($request['request_preview'] ?? '')), 0, 280);
+    $metadata = is_array($request['metadata'] ?? null) ? $request['metadata'] : [];
+
+    return firebase_run_credit_transaction(function ($transaction) use ($uid, $estimatedCredits, $usageId, $threadId, $mode, $model, $requestPreview, $metadata) {
+        $now = gmdate('c');
+        $ledgerId = firebase_generate_credit_ledger_id();
+        $userDoc = firebase_credit_document('users', $uid);
+        $usageDoc = firebase_credit_document('ai_usage', $usageId);
+        $ledgerDoc = firebase_credit_document('credit_ledger', $ledgerId);
+        if (!$userDoc || !$usageDoc || !$ledgerDoc) {
+            throw new RuntimeException('Could not prepare the Firestore credit documents.');
+        }
+
+        $userSnapshot = $transaction->snapshot($userDoc);
+        $currentUser = firebase_user_document_to_record($userSnapshot);
+        if (!$currentUser) {
+            throw new RuntimeException('Could not load the AI credit owner.');
+        }
+
+        $existingUsage = firebase_ai_usage_document_to_record($transaction->snapshot($usageDoc));
+        if ($existingUsage) {
+            if ((string) ($existingUsage['status'] ?? '') === 'reserved' || (string) ($existingUsage['status'] ?? '') === 'completed') {
+                return [
+                    'user' => $currentUser,
+                    'usage' => $existingUsage,
+                    'estimated_credits' => (int) ($existingUsage['estimated_credits'] ?? $estimatedCredits),
+                ];
+            }
+
+            throw new RuntimeException('AI usage id is already in a terminal state.');
+        }
+
+        if (firebase_credit_available($currentUser) < $estimatedCredits) {
+            throw new RuntimeException('Not enough AI credits remaining for this request.');
+        }
+
+        $updatedUser = $currentUser;
+        $updatedUser['credit_reserved'] = max(0, (int) ($updatedUser['credit_reserved'] ?? 0)) + $estimatedCredits;
+        $updatedUser['credit_updated_at'] = $now;
+
+        $usage = [
+            'id' => $usageId,
+            'owner_uid' => $uid,
+            'thread_id' => $threadId,
+            'mode' => $mode,
+            'model' => $model,
+            'status' => 'reserved',
+            'prompt_tokens' => 0,
+            'completion_tokens' => 0,
+            'total_tokens' => 0,
+            'estimated_credits' => $estimatedCredits,
+            'final_credits' => 0,
+            'request_preview' => $requestPreview,
+            'error_message' => '',
+            'created_at' => $now,
+            'completed_at' => null,
+            'metadata' => $metadata,
+        ];
+
+        $ledger = [
+            'id' => $ledgerId,
+            'owner_uid' => $uid,
+            'type' => 'reservation',
+            'amount' => 0,
+            'balance_after' => (int) ($updatedUser['credit_balance'] ?? 0),
+            'source' => 'ai_request',
+            'reference_type' => 'ai_usage',
+            'reference_id' => $usageId,
+            'metadata' => [
+                'mode' => $mode,
+                'model' => $model,
+                'estimated_credits' => $estimatedCredits,
+                'reserved_after' => (int) ($updatedUser['credit_reserved'] ?? 0),
+                'available_after' => firebase_credit_available($updatedUser),
+            ],
+            'created_at' => $now,
+        ];
+
+        $transaction->set($userDoc, firebase_user_record_to_document($updatedUser));
+        $transaction->set($usageDoc, firebase_ai_usage_record_to_document($usage));
+        $transaction->set($ledgerDoc, firebase_credit_ledger_record_to_document($ledger));
+
+        return [
+            'user' => $updatedUser,
+            'usage' => $usage,
+            'estimated_credits' => $estimatedCredits,
+        ];
+    });
+}
+
+function firebase_ai_finalize_credits(string $usageId, array $providerUsage, ?array $user = null): array
+{
+    $initialUsage = firebase_fetch_ai_usage_record($usageId);
+    if (!$initialUsage) {
+        throw new RuntimeException('AI usage reservation not found.');
+    }
+
+    $uid = trim((string) ($initialUsage['owner_uid'] ?? ($user['uid'] ?? $user['id'] ?? $user['firebase_uid'] ?? '')));
+    if ($uid === '') {
+        throw new RuntimeException('AI usage owner is missing.');
+    }
+
+    return firebase_run_credit_transaction(function ($transaction) use ($uid, $usageId, $providerUsage) {
+        $ledgerId = firebase_generate_credit_ledger_id();
+        $userDoc = firebase_credit_document('users', $uid);
+        $usageDoc = firebase_credit_document('ai_usage', $usageId);
+        $ledgerDoc = firebase_credit_document('credit_ledger', $ledgerId);
+        if (!$userDoc || !$usageDoc || !$ledgerDoc) {
+            throw new RuntimeException('Could not prepare the Firestore credit documents.');
+        }
+
+        $currentUser = firebase_user_document_to_record($transaction->snapshot($userDoc));
+        $usage = firebase_ai_usage_document_to_record($transaction->snapshot($usageDoc));
+        if (!$currentUser || !$usage) {
+            throw new RuntimeException('AI usage reservation not found.');
+        }
+
+        $status = (string) ($usage['status'] ?? '');
+        if ($status === 'completed') {
+            return [
+                'user' => $currentUser,
+                'usage' => $usage,
+                'final_credits' => (int) ($usage['final_credits'] ?? 0),
+            ];
+        }
+        if ($status === 'refunded') {
+            throw new RuntimeException('This AI usage was already released and cannot be finalized.');
+        }
+        if ($status !== 'reserved') {
+            throw new RuntimeException('AI usage is not in a reservable state.');
+        }
+
+        $counts = firebase_ai_usage_token_counts($providerUsage);
+        $finalCredits = firebase_ai_cost_to_credits(firebase_ai_cost_usd(
+            (string) ($usage['model'] ?? firebase_default_ai_model()),
+            $counts['prompt_tokens'],
+            $counts['completion_tokens']
+        ));
+        $reserved = max(0, (int) ($usage['estimated_credits'] ?? 0));
+        $settlementAmount = $reserved - $finalCredits;
+        $now = gmdate('c');
+
+        $reservedNow = max(0, (int) ($currentUser['credit_reserved'] ?? 0));
+        if ($reservedNow < $reserved) {
+            throw new RuntimeException('Reserved AI credit balance is inconsistent.');
+        }
+        $newBalance = max(0, (int) ($currentUser['credit_balance'] ?? 0)) + $settlementAmount;
+        if ($newBalance < 0) {
+            throw new RuntimeException('Not enough AI credits remaining to finalize this request.');
+        }
+
+        $updatedUser = $currentUser;
+        $updatedUser['credit_balance'] = $newBalance;
+        $updatedUser['credit_reserved'] = $reservedNow - $reserved;
+        $updatedUser['credit_spent_lifetime'] = max(0, (int) ($updatedUser['credit_spent_lifetime'] ?? 0)) + $finalCredits;
+        $updatedUser['credit_updated_at'] = $now;
+
+        $usage['status'] = 'completed';
+        $usage['prompt_tokens'] = $counts['prompt_tokens'];
+        $usage['completion_tokens'] = $counts['completion_tokens'];
+        $usage['total_tokens'] = $counts['total_tokens'];
+        $usage['final_credits'] = $finalCredits;
+        $usage['completed_at'] = $now;
+        $usage['error_message'] = '';
+        $usage['metadata'] = array_merge(
+            is_array($usage['metadata'] ?? null) ? $usage['metadata'] : [],
+            ['settlement_amount' => $settlementAmount]
+        );
+
+        $ledger = [
+            'id' => $ledgerId,
+            'owner_uid' => $uid,
+            'type' => 'settlement',
+            'amount' => $settlementAmount,
+            'balance_after' => (int) ($updatedUser['credit_balance'] ?? 0),
+            'source' => 'ai_request',
+            'reference_type' => 'ai_usage',
+            'reference_id' => $usageId,
+            'metadata' => [
+                'mode' => (string) ($usage['mode'] ?? ''),
+                'model' => (string) ($usage['model'] ?? ''),
+                'prompt_tokens' => $counts['prompt_tokens'],
+                'completion_tokens' => $counts['completion_tokens'],
+                'total_tokens' => $counts['total_tokens'],
+                'reserved_credits' => $reserved,
+                'final_credits' => $finalCredits,
+            ],
+            'created_at' => $now,
+        ];
+
+        $transaction->set($userDoc, firebase_user_record_to_document($updatedUser));
+        $transaction->set($usageDoc, firebase_ai_usage_record_to_document($usage));
+        $transaction->set($ledgerDoc, firebase_credit_ledger_record_to_document($ledger));
+
+        return [
+            'user' => $updatedUser,
+            'usage' => $usage,
+            'final_credits' => $finalCredits,
+        ];
+    });
+}
+
+function firebase_ai_finalize_fixed_credits(string $usageId, int $finalCredits, array $metadata = [], ?array $user = null): array
+{
+    $initialUsage = firebase_fetch_ai_usage_record($usageId);
+    if (!$initialUsage) {
+        throw new RuntimeException('AI usage reservation not found.');
+    }
+
+    $uid = trim((string) ($initialUsage['owner_uid'] ?? ($user['uid'] ?? $user['id'] ?? $user['firebase_uid'] ?? '')));
+    if ($uid === '') {
+        throw new RuntimeException('AI usage owner is missing.');
+    }
+
+    return firebase_run_credit_transaction(function ($transaction) use ($uid, $usageId, $finalCredits, $metadata) {
+        $ledgerId = firebase_generate_credit_ledger_id();
+        $userDoc = firebase_credit_document('users', $uid);
+        $usageDoc = firebase_credit_document('ai_usage', $usageId);
+        $ledgerDoc = firebase_credit_document('credit_ledger', $ledgerId);
+        if (!$userDoc || !$usageDoc || !$ledgerDoc) {
+            throw new RuntimeException('Could not prepare the Firestore credit documents.');
+        }
+
+        $currentUser = firebase_user_document_to_record($transaction->snapshot($userDoc));
+        $usage = firebase_ai_usage_document_to_record($transaction->snapshot($usageDoc));
+        if (!$currentUser || !$usage) {
+            throw new RuntimeException('AI usage reservation not found.');
+        }
+
+        $status = (string) ($usage['status'] ?? '');
+        if ($status === 'completed') {
+            return [
+                'user' => $currentUser,
+                'usage' => $usage,
+                'final_credits' => (int) ($usage['final_credits'] ?? 0),
+            ];
+        }
+        if ($status === 'refunded') {
+            throw new RuntimeException('This AI usage was already released and cannot be finalized.');
+        }
+        if ($status !== 'reserved') {
+            throw new RuntimeException('AI usage is not in a reservable state.');
+        }
+
+        $finalCredits = max(1, $finalCredits);
+        $reserved = max(0, (int) ($usage['estimated_credits'] ?? 0));
+        $settlementAmount = $reserved - $finalCredits;
+        $now = gmdate('c');
+
+        $reservedNow = max(0, (int) ($currentUser['credit_reserved'] ?? 0));
+        if ($reservedNow < $reserved) {
+            throw new RuntimeException('Reserved AI credit balance is inconsistent.');
+        }
+
+        $newBalance = max(0, (int) ($currentUser['credit_balance'] ?? 0)) + $settlementAmount;
+        if ($newBalance < 0) {
+            throw new RuntimeException('Not enough AI credits remaining to finalize this request.');
+        }
+
+        $updatedUser = $currentUser;
+        $updatedUser['credit_balance'] = $newBalance;
+        $updatedUser['credit_reserved'] = $reservedNow - $reserved;
+        $updatedUser['credit_spent_lifetime'] = max(0, (int) ($updatedUser['credit_spent_lifetime'] ?? 0)) + $finalCredits;
+        $updatedUser['credit_updated_at'] = $now;
+
+        $usage['status'] = 'completed';
+        $usage['prompt_tokens'] = 0;
+        $usage['completion_tokens'] = 0;
+        $usage['total_tokens'] = 0;
+        $usage['final_credits'] = $finalCredits;
+        $usage['completed_at'] = $now;
+        $usage['error_message'] = '';
+        $usage['metadata'] = array_merge(
+            is_array($usage['metadata'] ?? null) ? $usage['metadata'] : [],
+            $metadata,
+            ['settlement_amount' => $settlementAmount, 'billing_type' => 'fixed']
+        );
+
+        $ledger = [
+            'id' => $ledgerId,
+            'owner_uid' => $uid,
+            'type' => 'settlement',
+            'amount' => $settlementAmount,
+            'balance_after' => (int) ($updatedUser['credit_balance'] ?? 0),
+            'source' => 'ai_request',
+            'reference_type' => 'ai_usage',
+            'reference_id' => $usageId,
+            'metadata' => array_merge([
+                'mode' => (string) ($usage['mode'] ?? ''),
+                'model' => (string) ($usage['model'] ?? ''),
+                'reserved_credits' => $reserved,
+                'final_credits' => $finalCredits,
+                'billing_type' => 'fixed',
+            ], $metadata),
+            'created_at' => $now,
+        ];
+
+        $transaction->set($userDoc, firebase_user_record_to_document($updatedUser));
+        $transaction->set($usageDoc, firebase_ai_usage_record_to_document($usage));
+        $transaction->set($ledgerDoc, firebase_credit_ledger_record_to_document($ledger));
+
+        return [
+            'user' => $updatedUser,
+            'usage' => $usage,
+            'final_credits' => $finalCredits,
+        ];
+    });
+}
+
+function firebase_ai_release_reserved_credits(string $usageId, string $errorMessage = '', ?array $user = null): array
+{
+    $initialUsage = firebase_fetch_ai_usage_record($usageId);
+    if (!$initialUsage) {
+        throw new RuntimeException('AI usage reservation not found.');
+    }
+
+    $uid = trim((string) ($initialUsage['owner_uid'] ?? ($user['uid'] ?? $user['id'] ?? $user['firebase_uid'] ?? '')));
+    if ($uid === '') {
+        throw new RuntimeException('AI usage owner is missing.');
+    }
+
+    return firebase_run_credit_transaction(function ($transaction) use ($uid, $usageId, $errorMessage) {
+        $ledgerId = firebase_generate_credit_ledger_id();
+        $userDoc = firebase_credit_document('users', $uid);
+        $usageDoc = firebase_credit_document('ai_usage', $usageId);
+        $ledgerDoc = firebase_credit_document('credit_ledger', $ledgerId);
+        if (!$userDoc || !$usageDoc || !$ledgerDoc) {
+            throw new RuntimeException('Could not prepare the Firestore credit documents.');
+        }
+
+        $currentUser = firebase_user_document_to_record($transaction->snapshot($userDoc));
+        $usage = firebase_ai_usage_document_to_record($transaction->snapshot($usageDoc));
+        if (!$currentUser || !$usage) {
+            throw new RuntimeException('AI usage reservation not found.');
+        }
+
+        $status = (string) ($usage['status'] ?? '');
+        if ($status === 'refunded') {
+            return [
+                'user' => $currentUser,
+                'usage' => $usage,
+            ];
+        }
+        if ($status === 'completed') {
+            return [
+                'user' => $currentUser,
+                'usage' => $usage,
+            ];
+        }
+        if ($status !== 'reserved') {
+            throw new RuntimeException('AI usage is not in a releasable state.');
+        }
+
+        $reserved = max(0, (int) ($usage['estimated_credits'] ?? 0));
+        $now = gmdate('c');
+
+        $reservedNow = max(0, (int) ($currentUser['credit_reserved'] ?? 0));
+        if ($reservedNow < $reserved) {
+            throw new RuntimeException('Reserved AI credit balance is inconsistent.');
+        }
+
+        $updatedUser = $currentUser;
+        $updatedUser['credit_reserved'] = $reservedNow - $reserved;
+        $updatedUser['credit_updated_at'] = $now;
+
+        $usage['status'] = 'refunded';
+        $usage['error_message'] = trim($errorMessage);
+        $usage['completed_at'] = $now;
+        $usage['metadata'] = array_merge(
+            is_array($usage['metadata'] ?? null) ? $usage['metadata'] : [],
+            ['released_reserved_credits' => $reserved]
+        );
+
+        $ledger = [
+            'id' => $ledgerId,
+            'owner_uid' => $uid,
+            'type' => 'reservation_release',
+            'amount' => 0,
+            'balance_after' => (int) ($updatedUser['credit_balance'] ?? 0),
+            'source' => 'failed_request',
+            'reference_type' => 'ai_usage',
+            'reference_id' => $usageId,
+            'metadata' => [
+                'error' => trim($errorMessage),
+                'released_reserved_credits' => $reserved,
+                'reserved_after' => (int) ($updatedUser['credit_reserved'] ?? 0),
+                'available_after' => firebase_credit_available($updatedUser),
+            ],
+            'created_at' => $now,
+        ];
+
+        $transaction->set($userDoc, firebase_user_record_to_document($updatedUser));
+        $transaction->set($usageDoc, firebase_ai_usage_record_to_document($usage));
+        $transaction->set($ledgerDoc, firebase_credit_ledger_record_to_document($ledger));
+
+        return [
+            'user' => $updatedUser,
+            'usage' => $usage,
+        ];
+    });
+}
+
+function firebase_grant_ai_credits(string $uid, int $amount, string $source = 'admin_grant', string $referenceType = 'admin_action', string $referenceId = '', array $metadata = []): array
+{
+    $uid = trim($uid);
+    if ($uid === '') {
+        throw new RuntimeException('Granting AI credits requires a user id.');
+    }
+    if ($amount === 0) {
+        throw new RuntimeException('Grant amount must not be zero.');
+    }
+
+    return firebase_run_credit_transaction(function ($transaction) use ($uid, $amount, $source, $referenceType, $referenceId, $metadata) {
+        $now = gmdate('c');
+        $ledgerId = firebase_generate_credit_ledger_id();
+        $userDoc = firebase_credit_document('users', $uid);
+        $ledgerDoc = firebase_credit_document('credit_ledger', $ledgerId);
+        if (!$userDoc || !$ledgerDoc) {
+            throw new RuntimeException('Could not prepare the Firestore credit documents.');
+        }
+
+        $currentUser = firebase_user_document_to_record($transaction->snapshot($userDoc));
+        if (!$currentUser) {
+            throw new RuntimeException('Could not load the AI credit owner.');
+        }
+
+        $balance = max(0, (int) ($currentUser['credit_balance'] ?? 0));
+        $newBalance = $balance + $amount;
+        if ($newBalance < 0) {
+            throw new RuntimeException('Credit adjustment would make the balance negative.');
+        }
+
+        $updatedUser = $currentUser;
+        $updatedUser['credit_balance'] = $newBalance;
+        if ($amount > 0) {
+            $updatedUser['credit_granted_lifetime'] = max(0, (int) ($updatedUser['credit_granted_lifetime'] ?? 0)) + $amount;
+        }
+        $updatedUser['credit_updated_at'] = $now;
+
+        $ledger = [
+            'id' => $ledgerId,
+            'owner_uid' => $uid,
+            'type' => $amount > 0 ? 'grant' : 'adjustment',
+            'amount' => $amount,
+            'balance_after' => (int) ($updatedUser['credit_balance'] ?? 0),
+            'source' => $source,
+            'reference_type' => $referenceType,
+            'reference_id' => $referenceId,
+            'metadata' => $metadata,
+            'created_at' => $now,
+        ];
+
+        $transaction->set($userDoc, firebase_user_record_to_document($updatedUser));
+        $transaction->set($ledgerDoc, firebase_credit_ledger_record_to_document($ledger));
+
+        return $updatedUser;
+    });
+}
+
+function firebase_credit_ledger_exists(string $uid, string $source, string $referenceType, string $referenceId): bool
+{
+    $uid = trim($uid);
+    if ($uid === '' || $referenceId === '') {
+        return false;
+    }
+
+    $database = firebase_credit_firestore();
+    if (!$database || !method_exists($database, 'collection')) {
+        return false;
+    }
+
+    try {
+        $query = $database->collection('credit_ledger')
+            ->where('ownerUid', '=', $uid)
+            ->where('source', '=', $source)
+            ->where('referenceType', '=', $referenceType)
+            ->where('referenceId', '=', $referenceId);
+
+        foreach ($query->documents() as $snapshot) {
+            if ($snapshot && (!method_exists($snapshot, 'exists') || $snapshot->exists())) {
+                return true;
+            }
+        }
+    } catch (\Throwable $error) {
+        error_log('firebase credit ledger lookup failed: ' . $error->getMessage());
+    }
+
+    return false;
+}
+
+function firebase_backfill_ai_credits(int $defaultCredits, bool $onlyZeroBalance = true, string $referenceId = 'initial_ai_credit_backfill_v1'): array
+{
+    $defaultCredits = max(0, $defaultCredits);
+    $referenceId = trim($referenceId);
+    $updated = 0;
+    $skipped = 0;
+
+    foreach (all_users() as $user) {
+        $uid = trim((string) ($user['uid'] ?? $user['id'] ?? ''));
+        if ($uid === '') {
+            $skipped++;
+            continue;
+        }
+
+        if ($referenceId !== '' && firebase_credit_ledger_exists($uid, 'backfill', 'backfill', $referenceId)) {
+            $skipped++;
+            continue;
+        }
+
+        $summary = firebase_credit_summary($user);
+        $shouldGrant = $onlyZeroBalance
+            ? ((int) $summary['balance'] === 0 && (int) $summary['granted_lifetime'] === 0 && (int) $summary['spent_lifetime'] === 0 && (int) $summary['reserved'] === 0)
+            : true;
+
+        if (!$shouldGrant) {
+            $skipped++;
+            continue;
+        }
+
+        firebase_grant_ai_credits(
+            $uid,
+            $defaultCredits,
+            'backfill',
+            'backfill',
+            $referenceId,
+            ['reason' => 'initial_ai_credit_backfill', 'only_zero_balance' => $onlyZeroBalance, 'user_uid' => $uid]
+        );
+        $updated++;
+    }
+
+    return ['updated' => $updated, 'skipped' => $skipped];
+}
+
 function firebase_thread_ai_messages(string $threadId, ?array $user = null): array
 {
     $threadId = trim($threadId);
@@ -1629,6 +3254,34 @@ function firebase_load_storage_text(string $path): string
     return '';
 }
 
+function firebase_load_storage_bytes(string $path): string
+{
+    $bucket = firebase_storage_bucket();
+    if (!$bucket || $path === '' || !method_exists($bucket, 'object')) {
+        return '';
+    }
+
+    try {
+        $object = $bucket->object($path);
+        if (!$object || (method_exists($object, 'exists') && !$object->exists())) {
+            return '';
+        }
+        if (method_exists($object, 'downloadAsString')) {
+            return (string) $object->downloadAsString();
+        }
+        if (method_exists($object, 'downloadAsStream')) {
+            $stream = $object->downloadAsStream();
+            if (is_resource($stream)) {
+                return (string) stream_get_contents($stream);
+            }
+        }
+    } catch (\Throwable $error) {
+        error_log('firebase storage read failed: ' . $error->getMessage());
+    }
+
+    return '';
+}
+
 function firebase_store_storage_text(string $path, string $content): void
 {
     $bucket = firebase_storage_bucket();
@@ -1641,6 +3294,23 @@ function firebase_store_storage_text(string $path, string $content): void
         'metadata' => [
             'contentType' => 'text/plain; charset=UTF-8',
         ],
+    ];
+
+    $bucket->upload($content, $options);
+}
+
+function firebase_store_storage_bytes(string $path, string $content, string $contentType = 'application/octet-stream', array $metadata = []): void
+{
+    $bucket = firebase_storage_bucket();
+    if (!$bucket || $path === '' || !method_exists($bucket, 'upload')) {
+        throw new RuntimeException('Firebase Storage bucket is not ready.');
+    }
+
+    $options = [
+        'name' => $path,
+        'metadata' => array_merge([
+            'contentType' => $contentType,
+        ], $metadata),
     ];
 
     $bucket->upload($content, $options);
@@ -1666,6 +3336,121 @@ function firebase_delete_storage_text(string $path): void
 function firebase_builtin_rules_manifest_path(): string
 {
     return 'builtin-rules/library.json';
+}
+
+function firebase_texture_normalizer_script_path(): string
+{
+    return dirname(__DIR__) . '/bin/normalize_texture.py';
+}
+
+function firebase_texture_normalizer_ready(): bool
+{
+    return is_file(firebase_texture_normalizer_script_path()) && trim((string) shell_exec('command -v python3 2>/dev/null')) !== '';
+}
+
+function firebase_texture_normalize_upload(string $sourcePath): array
+{
+    $sourcePath = trim($sourcePath);
+    if ($sourcePath === '' || !is_file($sourcePath)) {
+        throw new RuntimeException('Uploaded texture file is missing.');
+    }
+    if (!firebase_texture_normalizer_ready()) {
+        throw new RuntimeException('Texture normalization backend is not ready.');
+    }
+
+    $tempOutput = tempnam(sys_get_temp_dir(), 'p3d_texture_');
+    if ($tempOutput === false) {
+        throw new RuntimeException('Could not prepare a texture output file.');
+    }
+
+    $stderrFile = tempnam(sys_get_temp_dir(), 'p3d_texture_err_');
+    if ($stderrFile === false) {
+        @unlink($tempOutput);
+        throw new RuntimeException('Could not prepare a texture error file.');
+    }
+
+    $command = escapeshellcmd('python3') . ' '
+        . escapeshellarg(firebase_texture_normalizer_script_path()) . ' '
+        . escapeshellarg($sourcePath) . ' '
+        . escapeshellarg($tempOutput)
+        . ' 2>' . escapeshellarg($stderrFile);
+
+    $exitCode = 0;
+    exec($command, $commandOutput, $exitCode);
+    $stderr = is_file($stderrFile) ? trim((string) file_get_contents($stderrFile)) : '';
+    @unlink($stderrFile);
+
+    if ($exitCode !== 0 || !is_file($tempOutput)) {
+        @unlink($tempOutput);
+        throw new RuntimeException($stderr !== '' ? $stderr : 'Could not normalize the texture upload.');
+    }
+
+    $bytes = (string) file_get_contents($tempOutput);
+    @unlink($tempOutput);
+    if ($bytes === '') {
+        throw new RuntimeException('Normalized texture output was empty.');
+    }
+
+    $decoded = json_decode($stderr, true);
+    if (!is_array($decoded)) {
+        $decoded = [];
+    }
+
+    return [
+        'bytes' => $bytes,
+        'mime_type' => 'image/png',
+        'width' => max(1, (int) ($decoded['width'] ?? 512)),
+        'height' => max(1, (int) ($decoded['height'] ?? 512)),
+    ];
+}
+
+function firebase_texture_normalize_bytes(string $bytes, string $extension = '.png'): array
+{
+    if ($bytes === '') {
+        throw new RuntimeException('Texture source bytes were empty.');
+    }
+
+    $tempInput = tempnam(sys_get_temp_dir(), 'p3d_texture_src_');
+    if ($tempInput === false) {
+        throw new RuntimeException('Could not prepare texture source file.');
+    }
+
+    $tempPath = $tempInput;
+    if ($extension !== '' && !str_ends_with($tempInput, $extension)) {
+        $nextPath = $tempInput . $extension;
+        if (!@rename($tempInput, $nextPath)) {
+            @unlink($tempInput);
+            throw new RuntimeException('Could not prepare texture source file.');
+        }
+        $tempPath = $nextPath;
+    }
+
+    file_put_contents($tempPath, $bytes);
+
+    try {
+        return firebase_texture_normalize_upload($tempPath);
+    } finally {
+        @unlink($tempPath);
+    }
+}
+
+function firebase_store_user_texture(string $ownerUid, string $slot, string $pngBytes): string
+{
+    $path = firebase_user_texture_storage_path($ownerUid, $slot);
+    firebase_store_storage_bytes($path, $pngBytes, 'image/png', [
+        'cacheControl' => 'private, max-age=0, no-store',
+    ]);
+    return $path;
+}
+
+function firebase_load_user_texture_bytes(string $ownerUid, string $slot): string
+{
+    return firebase_load_storage_bytes(firebase_user_texture_storage_path($ownerUid, $slot));
+}
+
+function firebase_delete_user_texture(string $ownerUid, string $slot): void
+{
+    firebase_delete_storage_text(firebase_user_texture_storage_path($ownerUid, $slot));
 }
 
 function firebase_builtin_rule_storage_path(string $id): string

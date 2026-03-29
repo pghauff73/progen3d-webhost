@@ -183,6 +183,19 @@ pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
   border-color: rgba(117, 228, 255, 0.18);
   color: #effbff;
 }
+.site-nav .nav-pill--credits {
+  gap: .5rem;
+  background: rgba(52, 211, 153, 0.10);
+  border-color: rgba(52, 211, 153, 0.24);
+  color: #ecfdf5;
+}
+.site-nav .nav-pill--credits strong {
+  font-size: 1rem;
+}
+.site-nav .nav-pill--credits span {
+  color: rgba(236, 253, 245, 0.78);
+  font-size: .82rem;
+}
 
 .flash-wrap { padding-top: 1rem; }
 .flash {
