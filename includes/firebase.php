@@ -15,7 +15,7 @@ function firebase_bootstrap_admin_email(): string
 function firebase_client_config(): array
 {
     return [
-        'apiKey' => 'AIzaSyB3t5vavlj54LJQhPV4Z0L-mq-eBTYFX3E',
+        'apiKey' => '-------------------------',
         'authDomain' => 'progen3d-f0dfa.firebaseapp.com',
         'projectId' => 'progen3d-f0dfa',
         'storageBucket' => 'progen3d-f0dfa.firebasestorage.app',
