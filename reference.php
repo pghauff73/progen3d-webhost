@@ -138,6 +138,22 @@ whitespace inside expressions may include spaces, tabs, newlines, and carriage r
     </div>
   </section>
 
+  <section class="reference-card" id="capability-matrix">
+    <h2>ProGen3D capability and grammar compatibility matrix</h2>
+    <p class="muted">Updated 23 November 2026. ProGen3D has multiple runtimes. A construct available in the native Linux editor is not automatically supported by this PHP/JavaScript browser parser. Use the live grammar summary above for browser-safe syntax; test advanced grammars against the target runtime.</p>
+    <div class="reference-table">
+      <div class="reference-row"><div class="reference-syntax"><strong>Browser grammar baseline</strong></div><div>Named rules and parameters, grouped statements, rule calls, alternatives, conditionals, arithmetic expressions, T/S/A/R transforms, DS*/DT* and GDS*/GDT* deformation operators, and I(Cube/CubeX/CubeY/CubeZ texture value). This is the documented syntax of the bundled web parser.</div></div>
+      <div class="reference-row"><div class="reference-syntax"><strong>Native desktop authoring</strong></div><div>Linux C++17/OpenGL/ImGui editor with smart source editing, diagnostics, deterministic regeneration, object inspector, PBR materials, textures, lights, electrical controls, render settings, and AI-assisted proposals. These are desktop capabilities, not guarantees of browser parity.</div></div>
+      <div class="reference-row"><div class="reference-syntax"><strong>Animation and time</strong></div><div>Native preview supports Play, Pause, Step, Reset Time/Simulation, speed controls and temporal grammar studies. Verify time-variable expressions and playback individually in the web editor before publishing.</div></div>
+      <div class="reference-row"><div class="reference-syntax"><strong>Spatial architecture</strong></div><div>Native examples include SMB-OMv2 spatially aware buildings, a 20-level architectural taxonomy, object interfaces, connections, constraints, contacts, clearances and inspection overlays. These are model-specific/native workflows.</div></div>
+      <div class="reference-row"><div class="reference-syntax"><strong>Engineering and simulation</strong></div><div>Core repository includes airflow/propeller/duct studies, procedural vehicles, vegetation, furniture and advanced form studies. Mechanical reuse, bearings, belt drives, motors, flexibility, thermal/CFD and other engineering extensions must be marked experimental unless a specific target build and regression test demonstrate support.</div></div>
+      <div class="reference-row"><div class="reference-syntax"><strong>Reuse and assemblies</strong></div><div>The modular web editor has a reuse subsystem; the reported 419-entry reuse-database work is under review. Do not assume that every catalog item is available in the deployed runtime or that a reusable part automatically simulates physical behavior.</div></div>
+      <div class="reference-row"><div class="reference-syntax"><strong>Mesh interchange</strong></div><div>The native toolchain documents PLY export and textured-mesh/orthographic converters. GLB/FBX import and cross-runtime interchange require separate capability checks; a reference model is not necessarily a supported grammar primitive.</div></div>
+      <div class="reference-row"><div class="reference-syntax"><strong>AI grammar rewriting</strong></div><div>AI-generated source is a proposal. Keep the original, validate syntax and operators against the selected parser, regenerate, inspect diagnostics and geometry, then explicitly accept the change. Never place an OpenAI API key in published grammar or client source.</div></div>
+    </div>
+    <p class="muted">Authoritative implementation references: <a href="https://github.com/pghauff73/progen3d">native core repository</a> and <a href="https://github.com/pghauff73/progen3d-webhost">webhost repository</a>. The repository READMEs and tests, not concept designs alone, determine what is shipped.</p>
+  </section>
+
   <section class="reference-grid">
     <?php foreach ($sections as $section): ?>
       <article class="reference-card">
