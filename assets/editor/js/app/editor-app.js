@@ -614,6 +614,17 @@
 
     try {
       setStatus(reason === 'auto' ? 'Auto-running grammar…' : 'Running grammar…', 'processing');
+      if (window.ProGenReuse?.handles(trimmed)) {
+        const mesh = await ProGenReuse.render(trimmed, sourceInput, scene, renderer);
+        if (mesh) {
+          lastExecutedText = trimmed;
+          setStatus('Done · ' + mesh.triangles + ' triangles', 'ready');
+          setAutoRunState('Auto-run armed', 'idle');
+          logInfo('Reuse model built: ' + mesh.parts.length + ' primitives, ' + mesh.triangles + ' triangles.');
+        }
+        return;
+      }
+      window.ProGenReuse?.cancel(renderer);
       scene.clear?.();
 
       if (typeof Grammar !== 'function') {

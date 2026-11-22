@@ -1,5 +1,7 @@
 # ProGen3D Live Site
 
+The PHP editor and its modular gallery viewer support the 419-entry ProGen3D reuse database 1.4.0. Open **Reuse database** in the editor to find a part, adjust its parameters and run it. See [using and rebuilding the catalogue](assets/editor/reuse/README.md).
+
 This package wraps the modular ProGen3D grammar editor in a small PHP site with:
 
 - login and registration

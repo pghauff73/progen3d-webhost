@@ -999,6 +999,11 @@
       this.invalidate();
     }
     setScene(scene) {
+      if (scene?.reuseMesh && window.ProGenReuse) {
+        this.scene = scene;
+        ProGenReuse.display(this, scene.reuseMesh, (...buffers) => this.#uploadAll(...buffers));
+        return;
+      }
       if (!scene || typeof scene.getAll !== "function")
         throw new Error("setScene expects a Scene instance with getAll().");
       this.scene = scene;
@@ -1596,6 +1601,7 @@
     }
 // ---------------- STL Export ----------------
 exportSTL(filename = "scene.stl") {
+  if (this.scene?.reuseMesh) { ProGenReuse.exportSTL(this.scene.reuseMesh, filename); return; }
   if (!this.scene || typeof this.scene.getAll !== "function") {
     console.error("STLExporter: No valid scene set.");
     return;
