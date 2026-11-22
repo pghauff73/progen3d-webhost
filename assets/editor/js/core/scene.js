@@ -334,6 +334,6 @@ class Scene {
     });
   }
 
-  clear() { this.items.length = 0; }
+  clear() { this.items.length = 0; delete this.reuseMesh; }
   getAll() { return this.items.slice(); }
 }

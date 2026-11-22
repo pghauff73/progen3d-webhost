@@ -345,6 +345,11 @@ Crown( r glow ) -&gt;
     </section>
   </section>
 </main>
+<script src="assets/editor/reuse/catalogue.js"></script>
+<script src="assets/editor/reuse/reuse-language.js"></script>
+<script src="assets/editor/reuse/native-engine.js"></script>
+<script src="assets/editor/reuse/engine-bytes.js"></script>
+<script src="assets/editor/reuse/reuse-editor.js"></script>
 <script defer src="assets/editor/js/core/helpers.js?v=<?= e($editorAssetVersion) ?>"></script>
 <script defer src="assets/editor/js/core/renderer.js?v=<?= e($editorAssetVersion) ?>"></script>
 <script defer src="assets/editor/js/core/scene.js?v=<?= e($editorAssetVersion) ?>"></script>
